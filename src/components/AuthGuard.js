@@ -64,11 +64,13 @@ export default function AuthGuard({ children }) {
     return <>{children}</>;
   }
 
-  // الـ protected pages — مع Navbar
+  // الـ protected pages — مع Navbar (خارج overflow عشان fixed / mobile menu مايتقصوش)
   return (
-    <div className="relative isolate z-10 flex min-h-dvh flex-col overflow-x-hidden">
+    <>
       <Navbar />
-      <div className="min-h-0 flex-1 pt-[10vh]">{children}</div>
-    </div>
+      <div className="relative isolate z-10 flex min-h-dvh flex-col overflow-x-hidden">
+        <div className="min-h-0 flex-1 pt-[10vh]">{children}</div>
+      </div>
+    </>
   );
 }
