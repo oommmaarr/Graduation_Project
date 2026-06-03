@@ -1,6 +1,10 @@
 import { create } from "zustand";
 
-const API_BASE = "https://recommendationsystem-production-9a13.up.railway.app";
+const RECOMMENDATION_API_BASE =
+  "https://recommendationsystem-production-9a13.up.railway.app";
+const ROADMAP_API_BASE =
+  import.meta.env.VITE_ROADMAP_API_URL ||
+  "https://roadmapgeneration-production.up.railway.app";
 
 // ─── Interview Store ───────────────────────────────────────────────────────────
 // Manages the full lifecycle of a recommendation-system interview session.
@@ -18,6 +22,12 @@ const useInterviewStore = create((set, get) => ({
   questionNumber: 0,
   isFinished: false,
   recommendation: null,
+
+  // ── Roadmap ───────────────────────────────────────────────────────────────
+  roadmap: null,
+  hoursPerWeek: 10,
+  roadmapLoading: false,
+  roadmapError: null,
 
   // ── UI State ──────────────────────────────────────────────────────────────
   selectedAnswer: null,
@@ -47,7 +57,7 @@ const useInterviewStore = create((set, get) => ({
   startSession: async () => {
     set({ isLoading: true, error: null });
     try {
-      const res = await fetch(`${API_BASE}/start`, {
+      const res = await fetch(`${RECOMMENDATION_API_BASE}/start`, {
         method: "POST",
         headers: { accept: "application/json" },
         body: "",
@@ -80,7 +90,7 @@ const useInterviewStore = create((set, get) => ({
 
     set({ isLoading: true, error: null });
     try {
-      const res = await fetch(`${API_BASE}/answer`, {
+      const res = await fetch(`${RECOMMENDATION_API_BASE}/answer`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -118,6 +128,56 @@ const useInterviewStore = create((set, get) => ({
     }
   },
 
+  setHoursPerWeek: (hours) =>
+    set({ hoursPerWeek: Math.min(40, Math.max(1, Number(hours) || 1)) }),
+
+  /** POST /generate-roadmap — build a time-scaled learning path */
+  generateRoadmap: async () => {
+    const { recommendation, hoursPerWeek } = get();
+    const trackName = recommendation?.track_name;
+    if (!trackName) {
+      set({ roadmapError: "No track selected. Complete the quiz first." });
+      return;
+    }
+
+    set({ roadmapLoading: true, roadmapError: null });
+    try {
+      const res = await fetch(`${ROADMAP_API_BASE}/generate-roadmap`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          accept: "application/json",
+        },
+        body: JSON.stringify({
+          track_name: trackName,
+          hours_per_week: hoursPerWeek,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail?.[0]?.msg || `Server error: ${res.status}`);
+      }
+      const data = await res.json();
+      console.log(
+        "%c[/generate-roadmap] response",
+        "color:#1387AE;font-weight:bold",
+        data
+      );
+
+      set({
+        roadmap: data,
+        roadmapLoading: false,
+        roadmapError: null,
+        phase: "roadmap",
+      });
+    } catch (err) {
+      set({ roadmapLoading: false, roadmapError: err.message });
+    }
+  },
+
+  clearRoadmap: () =>
+    set({ roadmap: null, roadmapError: null, phase: "done" }),
+
   /** Full reset — go back to welcome screen */
   reset: () =>
     set({
@@ -128,6 +188,10 @@ const useInterviewStore = create((set, get) => ({
       questionNumber: 0,
       isFinished: false,
       recommendation: null,
+      roadmap: null,
+      hoursPerWeek: 10,
+      roadmapLoading: false,
+      roadmapError: null,
       selectedAnswer: null,
       isLoading: false,
       error: null,

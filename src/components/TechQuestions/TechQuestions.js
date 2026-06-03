@@ -2,6 +2,7 @@ import React from "react";
 import Lottie from "lottie-react";
 import RobotAnimation from "@/animation/Robot.json";
 import useInterviewStore from "@/store/useInterviewStore";
+import RoadmapView from "@/components/Roadmap/RoadmapView";
 
 // ─── Shared keyframes (injected once) ─────────────────────────────────────────
 const Keyframes = () => (
@@ -101,7 +102,7 @@ function WelcomePopup() {
         {!showTrackInput ? (
           <button
             onClick={() => setShowTrackInput(true)}
-            className="text-sm text-[#7E1487] font-medium hover:underline underline-offset-2 cursor-pointer transition-colors"
+            className="md:text-sm text-xs text-[#7E1487] font-medium hover:underline underline-offset-2 cursor-pointer transition-colors"
           >
             Already know your track? Enter it directly →
           </button>
@@ -251,12 +252,17 @@ function InterviewScreen() {
 function ResultScreen() {
   const recommendation = useInterviewStore((s) => s.recommendation);
   const reset = useInterviewStore((s) => s.reset);
+  const hoursPerWeek = useInterviewStore((s) => s.hoursPerWeek);
+  const setHoursPerWeek = useInterviewStore((s) => s.setHoursPerWeek);
+  const generateRoadmap = useInterviewStore((s) => s.generateRoadmap);
+  const roadmapLoading = useInterviewStore((s) => s.roadmapLoading);
+  const roadmapError = useInterviewStore((s) => s.roadmapError);
 
   const { track_name, reasoning, confidence_score, suggested_courses } = recommendation || {};
   const pct = confidence_score != null ? Math.round(confidence_score * 100) : null;
 
   return (
-    <div className="max-w-lg mx-auto px-4 py-10 animate-[slideQ_0.5s_ease_both]">
+    <div className="max-w-xl mx-auto px-4 py-10 animate-[slideQ_0.5s_ease_both]">
       <Keyframes />
       <div className="bg-white border border-[#1387AE]/20 rounded-3xl p-8 shadow-[0_8px_48px_rgba(19,135,174,0.14)] flex flex-col gap-5">
 
@@ -308,13 +314,67 @@ function ResultScreen() {
           </div>
         )}
 
-        {/* Restart */}
-        <button
-          onClick={reset}
-          className="mt-2 px-5 py-2.5 rounded-full border border-gray-200 text-sm text-gray-500 hover:border-gray-400 hover:text-gray-800 hover:bg-gray-50 transition-all w-fit cursor-pointer"
-        >
-          Retake the quiz
-        </button>
+        {/* Roadmap generator */}
+        <div className="border-t border-gray-100 pt-5 flex flex-col gap-4">
+          <div>
+            <h4 className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-1">
+              Build Your Roadmap
+            </h4>
+            <p className="text-sm text-gray-500">
+              How many hours can you study per week?
+            </p>
+          </div>
+
+          <div className="flex items-center gap-4">
+            <input
+              type="range"
+              min={1}
+              max={40}
+              value={hoursPerWeek}
+              onChange={(e) => setHoursPerWeek(Number(e.target.value))}
+              className="flex-1 accent-[#7E1487] cursor-pointer"
+            />
+            <span className="min-w-[52px] text-center text-lg font-bold text-[#1387AE]">
+              {hoursPerWeek}h
+            </span>
+          </div>
+
+          {roadmapError && (
+            <p className="text-xs text-red-500 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+              {roadmapError}
+            </p>
+          )}
+
+          {/* Actions — stack on mobile, side by side on sm+ */}
+          <div className="flex flex-col sm:flex-row items-stretch gap-3">
+            <button
+              onClick={reset}
+              className="w-full sm:w-auto px-5 py-3 rounded-full border border-gray-200 text-sm font-medium text-gray-500 hover:border-gray-400 hover:text-gray-800 hover:bg-gray-50 transition-all cursor-pointer whitespace-nowrap"
+            >
+              Retake the quiz
+            </button>
+            <button
+              type="button"
+              onClick={generateRoadmap}
+              disabled={roadmapLoading}
+              className="flex w-full sm:flex-1 items-center justify-center gap-2 px-6 py-3 rounded-full text-white text-sm font-semibold whitespace-nowrap bg-gradient-to-r from-[#7E1487] to-[#1387AE] shadow-[0_4px_20px_rgba(19,135,174,0.35)] hover:-translate-y-0.5 hover:shadow-[0_8px_28px_rgba(19,135,174,0.45)] active:scale-95 transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+            >
+              {roadmapLoading ? (
+                <>
+                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  Generating roadmap…
+                </>
+              ) : (
+                <>
+                  Generate My Roadmap
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M5 12h14M12 5l7 7-7 7" />
+                  </svg>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -339,6 +399,10 @@ function ClosedState() {
 // ─── TechQuestions (root) ──────────────────────────────────────────────────────
 const TechQuestions = () => {
   const phase = useInterviewStore((s) => s.phase);
+
+  if (phase === "roadmap") {
+    return <RoadmapView />;
+  }
 
   return (
     <div className="w-full min-h-[calc(100vh-10vh)] flex items-center justify-center">
