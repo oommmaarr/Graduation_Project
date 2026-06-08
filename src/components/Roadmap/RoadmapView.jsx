@@ -9,6 +9,7 @@ import {
   Clock,
   ExternalLink,
   Flag,
+  Lock,
   Map,
   Network,
   Route,
@@ -17,7 +18,10 @@ import {
   Youtube,
   Zap,
 } from "lucide-react";
-import useInterviewStore from "@/store/useInterviewStore";
+import useInterviewStore, {
+  computeTrackProgress,
+} from "@/store/useInterviewStore";
+import WeekQuizPanel from "@/components/Roadmap/WeekQuizPanel";
 
 const SKILL_COLORS = [
   "#1387AE",
@@ -531,7 +535,7 @@ function SkillPanel({ skill, weekNumber, totalWeeks, weekHours }) {
   );
 }
 
-function WeekTimeline({ weeks, activeWeek, onSelectWeek }) {
+function WeekTimeline({ weeks, activeWeek, unlockedWeekIndex, passedWeeks, onSelectWeek }) {
   return (
     <div className="relative border-t border-gray-100 bg-gray-50/70 px-4 py-4">
       <div className="mb-3 flex items-center justify-between px-2">
@@ -548,7 +552,8 @@ function WeekTimeline({ weeks, activeWeek, onSelectWeek }) {
         <div className="flex min-w-max gap-2 px-2">
           {weeks.map((week, i) => {
             const active = i === activeWeek;
-            const done = i < activeWeek;
+            const done = passedWeeks.includes(i);
+            const locked = i > unlockedWeekIndex;
             const hours = week.skills.reduce((s, sk) => s + sk.estimated_hours, 0);
 
             return (
@@ -556,7 +561,6 @@ function WeekTimeline({ weeks, activeWeek, onSelectWeek }) {
                 key={week.week_number}
                 className="relative flex min-w-[84px] shrink-0 flex-col items-center gap-1.5"
               >
-                {/* connector: center of this circle → center of next */}
                 {i < weeks.length - 1 && (
                   <div
                     aria-hidden
@@ -567,7 +571,7 @@ function WeekTimeline({ weeks, activeWeek, onSelectWeek }) {
                       width: "calc(100% + 8px)",
                       transform: "translateY(-50%)",
                       background:
-                        i < activeWeek
+                        done
                           ? "linear-gradient(90deg, #1387AE, #7E1487)"
                           : "rgba(19,135,174,0.18)",
                     }}
@@ -576,8 +580,11 @@ function WeekTimeline({ weeks, activeWeek, onSelectWeek }) {
 
                 <button
                   type="button"
-                  onClick={() => onSelectWeek(i)}
-                  className={`group relative z-10 flex w-full flex-col items-center gap-1.5 rounded-2xl px-3 py-2.5 transition-all cursor-pointer
+                  onClick={() => !locked && onSelectWeek(i)}
+                  disabled={locked}
+                  title={locked ? "Complete the previous week quiz to unlock" : undefined}
+                  className={`group relative z-10 flex w-full flex-col items-center gap-1.5 rounded-2xl px-3 py-2.5 transition-all
+                    ${locked ? "cursor-not-allowed opacity-50" : "cursor-pointer"}
                     ${active
                       ? "border border-[#1387AE]/30 bg-gradient-to-b from-[#1387AE]/10 to-[#7E1487]/5 shadow-[0_6px_20px_rgba(19,135,174,0.15)]"
                       : "border border-transparent hover:border-gray-200 hover:bg-white"
@@ -589,10 +596,12 @@ function WeekTimeline({ weeks, activeWeek, onSelectWeek }) {
                         ? "bg-gradient-to-br from-[#1387AE] to-[#7E1487] text-white shadow-[0_4px_12px_rgba(19,135,174,0.4)]"
                         : done
                           ? "bg-[#0094BD]/12 text-[#0094BD] ring-2 ring-[#0094BD]/30"
-                          : "bg-white text-gray-500 ring-1 ring-gray-200 group-hover:ring-[#1387AE]/30"
+                          : locked
+                            ? "bg-gray-100 text-gray-400 ring-1 ring-gray-200"
+                            : "bg-white text-gray-500 ring-1 ring-gray-200 group-hover:ring-[#1387AE]/30"
                       }`}
                   >
-                    {done ? <Check size={14} /> : week.week_number}
+                    {done ? <Check size={14} /> : locked ? <Lock size={12} /> : week.week_number}
                   </span>
                   <span className={`text-[10px] font-medium ${active ? "text-[#1387AE]" : "text-gray-400"}`}>
                     {fmtHours(hours)}h
@@ -621,7 +630,7 @@ function GoalBadge({ className = "" }) {
   );
 }
 
-function JourneyMap({ weeks, activeWeek, onPickWeek }) {
+function JourneyMap({ weeks, activeWeek, unlockedWeekIndex, passedWeeks, onPickWeek }) {
   const isMobile = useMediaQuery({ maxWidth: 767 });
 
   const width = isMobile ? 400 : 820;
@@ -746,8 +755,8 @@ function JourneyMap({ weeks, activeWeek, onPickWeek }) {
       {/* milestone nodes */}
       {points.map(({ x, y, week, index }) => {
         const active = index === activeWeek;
-        const done = index < activeWeek;
-        const future = index > activeWeek;
+        const done = passedWeeks.includes(index);
+        const locked = index > unlockedWeekIndex;
         const skillCount = week.skills.length;
         const hours = week.skills.reduce((s, sk) => s + sk.estimated_hours, 0);
         const r = active ? nodeR.active : nodeR.normal;
@@ -756,8 +765,10 @@ function JourneyMap({ weeks, activeWeek, onPickWeek }) {
           ? "url(#nodeActive)"
           : done
             ? "#E6F6FA"
-            : "#FFFFFF";
-        const stroke = active ? "#1387AE" : done ? "#0094BD" : "rgba(19,135,174,0.25)";
+            : locked
+              ? "#F8FAFC"
+              : "#FFFFFF";
+        const stroke = active ? "#1387AE" : done ? "#0094BD" : locked ? "rgba(148,163,184,0.4)" : "rgba(19,135,174,0.25)";
 
         return (
           <motion.g
@@ -765,9 +776,9 @@ function JourneyMap({ weeks, activeWeek, onPickWeek }) {
             initial={{ scale: 0, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ delay: 0.3 + index * 0.05, type: "spring", stiffness: 220 }}
-            style={{ cursor: "pointer" }}
-            onClick={() => onPickWeek(index)}
-            whileHover={{ scale: 1.08 }}
+            style={{ cursor: locked ? "not-allowed" : "pointer", opacity: locked ? 0.65 : 1 }}
+            onClick={() => !locked && onPickWeek(index)}
+            whileHover={locked ? undefined : { scale: 1.08 }}
           >
             {active && (
               <motion.circle
@@ -805,7 +816,17 @@ function JourneyMap({ weeks, activeWeek, onPickWeek }) {
                   strokeLinejoin="round"
                 />
               </g>
-            ) : future ? (
+            ) : locked ? (
+              <g transform={`translate(${x}, ${y})`}>
+                <rect x={-5} y={-6} width={10} height={8} rx={2} fill="none" stroke="#94a3b8" strokeWidth={1.3} />
+                <path d="M -3 -1 Q 0 -5 3 -1" fill="none" stroke="#94a3b8" strokeWidth={1.3} />
+                <line x1={0} y1={-1} x2={0} y2={2} stroke="#94a3b8" strokeWidth={1.3} />
+              </g>
+            ) : active ? (
+              <text x={x} y={y + 6} textAnchor="middle" fill="white" fontSize={fonts.weekActive} fontWeight={800}>
+                {week.week_number}
+              </text>
+            ) : (
               <>
                 <text x={x} y={y - 4} textAnchor="middle" fill="#475569" fontSize={fonts.weekFuture} fontWeight={800}>
                   {week.week_number}
@@ -815,10 +836,6 @@ function JourneyMap({ weeks, activeWeek, onPickWeek }) {
                   <path d={`M ${isMobile ? -3.5 : -3} -2 Q 0 ${isMobile ? -7 : -6} ${isMobile ? 3.5 : 3} -2`} fill="none" stroke="#94a3b8" strokeWidth={1.2} />
                 </g>
               </>
-            ) : (
-              <text x={x} y={y + 6} textAnchor="middle" fill="white" fontSize={fonts.weekActive} fontWeight={800}>
-                {week.week_number}
-              </text>
             )}
 
             {/* label card */}
@@ -866,16 +883,59 @@ function JourneyMap({ weeks, activeWeek, onPickWeek }) {
   );
 }
 
+// ─── Track progress ─────────────────────────────────────────────────────────────
+function TrackProgressSection({ progressPercent, loading }) {
+  return (
+    <div className="border-t border-gray-100 bg-white px-6 py-4">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="min-w-[200px] flex-1">
+          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-700">
+            Track Progress
+          </p>
+          <div className="mt-2 flex items-center gap-3">
+            <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-gray-100">
+              <motion.div
+                className="h-full rounded-full bg-gradient-to-r from-[#1387AE] via-[#7E1487] to-[#0094BD]"
+                initial={{ width: 0 }}
+                animate={{ width: `${progressPercent}%` }}
+                transition={{ duration: 0.9, ease: "easeOut" }}
+              />
+            </div>
+            <span className="text-lg font-extrabold tabular-nums text-[#7E1487]">
+              {progressPercent}%
+            </span>
+          </div>
+          {loading && (
+            <p className="mt-1.5 text-[11px] text-gray-400">Updating progress…</p>
+          )}
+        </div>
+        <p className="max-w-sm text-xs text-gray-700">
+          Complete each week&apos;s quiz to move toward your track goal.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export default function RoadmapView() {
   const roadmap = useInterviewStore((s) => s.roadmap);
   const hoursPerWeek = useInterviewStore((s) => s.hoursPerWeek);
   const clearRoadmap = useInterviewStore((s) => s.clearRoadmap);
   const reset = useInterviewStore((s) => s.reset);
+  const unlockedWeekIndex = useInterviewStore((s) => s.unlockedWeekIndex);
+  const passedWeeks = useInterviewStore((s) => s.passedWeeks);
+  const progressTrackName = useInterviewStore((s) => s.progressTrackName);
+  const activeRoadmapKey = useInterviewStore((s) => s.activeRoadmapKey);
+  const progressByRoadmapKey = useInterviewStore((s) => s.progressByRoadmapKey);
+  const courseWeights = useInterviewStore((s) => s.courseWeights);
+  const courseWeightsLoading = useInterviewStore((s) => s.courseWeightsLoading);
+  const fetchCourseWeights = useInterviewStore((s) => s.fetchCourseWeights);
+  const openWeekQuiz = useInterviewStore((s) => s.openWeekQuiz);
 
   const weeks = roadmap?.roadmap ?? [];
   const [activeWeek, setActiveWeek] = useState(0);
   const [selectedSkill, setSelectedSkill] = useState(null);
-  const [viewMode, setViewMode] = useState("journey"); // "journey" | "network"
+  const [viewMode, setViewMode] = useState("journey");
 
   const currentWeek = weeks[activeWeek];
   const weekHours = useMemo(
@@ -891,12 +951,54 @@ export default function RoadmapView() {
     [weeks]
   );
 
+  const isCurrentWeekPassed = passedWeeks.includes(activeWeek);
+  const canTakeQuiz = !isCurrentWeekPassed && activeWeek <= unlockedWeekIndex;
+
+  const trackProgress = useMemo(
+    () => computeTrackProgress(roadmap, passedWeeks, courseWeights),
+    [roadmap, passedWeeks, courseWeights]
+  );
+
+  useEffect(() => {
+    const track = roadmap?.track_name;
+    if (!track) return;
+    if (progressTrackName !== track) {
+      const saved = activeRoadmapKey ? progressByRoadmapKey[activeRoadmapKey] : null;
+      useInterviewStore.setState({
+        progressTrackName: track,
+        unlockedWeekIndex: saved?.unlockedWeekIndex ?? 0,
+        passedWeeks: saved?.passedWeeks ?? [],
+        courseWeights: saved?.courseWeights ?? null,
+      });
+      if (!saved?.courseWeights) fetchCourseWeights();
+    } else if (!courseWeights && !courseWeightsLoading) {
+      fetchCourseWeights();
+    }
+  }, [
+    roadmap?.track_name,
+    progressTrackName,
+    activeRoadmapKey,
+    progressByRoadmapKey,
+    courseWeights,
+    courseWeightsLoading,
+    fetchCourseWeights,
+  ]);
+
+  useEffect(() => {
+    if (activeWeek > unlockedWeekIndex) {
+      setActiveWeek(unlockedWeekIndex);
+      setSelectedSkill(null);
+    }
+  }, [activeWeek, unlockedWeekIndex]);
+
   const handleWeekChange = (index) => {
+    if (index > unlockedWeekIndex) return;
     setActiveWeek(index);
     setSelectedSkill(null);
   };
 
   const handlePickWeek = (index) => {
+    if (index > unlockedWeekIndex) return;
     setActiveWeek(index);
     setSelectedSkill(null);
     setViewMode("network");
@@ -906,6 +1008,7 @@ export default function RoadmapView() {
 
   return (
     <div className="roadmap-view min-h-[calc(100vh-10vh)] w-full py-6">
+      <WeekQuizPanel />
       <style>{`
         @keyframes rmSpin { to { transform: rotate(360deg); } }
         @keyframes rmSpinRev { to { transform: rotate(-360deg); } }
@@ -969,6 +1072,13 @@ export default function RoadmapView() {
               <div className="w-px bg-gray-200" />
               <div className="text-center">
                 <p className="text-lg font-extrabold text-[#7E1487]">
+                  <AnimatedNumber value={trackProgress} suffix="%" />
+                </p>
+                <p className="text-[9px] uppercase tracking-wider text-gray-400">Progress</p>
+              </div>
+              <div className="w-px bg-gray-200" />
+              <div className="text-center">
+                <p className="text-lg font-extrabold text-[#7E1487]">
                   <AnimatedNumber value={Math.round(totalHours)} suffix="h" />
                 </p>
                 <p className="text-[9px] uppercase tracking-wider text-gray-400">Total</p>
@@ -992,6 +1102,11 @@ export default function RoadmapView() {
             </button>
           </div>
         </div>
+
+        <TrackProgressSection
+          progressPercent={trackProgress}
+          loading={courseWeightsLoading}
+        />
 
         {/* Main split layout */}
         <div className="grid min-h-[500px] grid-cols-1 lg:grid-cols-[1fr_360px]">
@@ -1049,7 +1164,13 @@ export default function RoadmapView() {
                   transition={{ duration: 0.35 }}
                   className="rm-scroll-v relative min-h-[380px] overflow-x-hidden overflow-y-auto px-4 pb-10 pt-14 sm:px-8"
                 >
-                  <JourneyMap weeks={weeks} activeWeek={activeWeek} onPickWeek={handlePickWeek} />
+                  <JourneyMap
+                    weeks={weeks}
+                    activeWeek={activeWeek}
+                    unlockedWeekIndex={unlockedWeekIndex}
+                    passedWeeks={passedWeeks}
+                    onPickWeek={handlePickWeek}
+                  />
                 </motion.div>
               ) : (
                 <motion.div
@@ -1087,7 +1208,40 @@ export default function RoadmapView() {
           </div>
         </div>
 
-        <WeekTimeline weeks={weeks} activeWeek={activeWeek} onSelectWeek={handleWeekChange} />
+        {/* Week quiz CTA */}
+        {canTakeQuiz && (
+          <div className="border-t border-gray-100 bg-gradient-to-r from-[#1387AE]/5 to-[#7E1487]/5 px-6 py-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-bold text-gray-900">Ready to unlock the next week?</p>
+                <p className="mt-0.5 text-xs text-gray-500">
+                  Study this week&apos;s resources, then pass the quiz (70%+) to continue.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => openWeekQuiz(activeWeek)}
+                className="shrink-0 rounded-full bg-gradient-to-r from-[#7E1487] to-[#1387AE] px-6 py-2.5 text-sm font-semibold text-white shadow-[0_4px_16px_rgba(19,135,174,0.3)] transition hover:-translate-y-0.5 cursor-pointer"
+              >
+                Take Week {activeWeek + 1} Quiz
+              </button>
+            </div>
+          </div>
+        )}
+
+        {isCurrentWeekPassed && activeWeek < weeks.length - 1 && (
+          <div className="border-t border-[#0094BD]/20 bg-[#0094BD]/5 px-6 py-3 text-center text-xs font-medium text-[#0094BD]">
+            Week {activeWeek + 1} completed — Week {activeWeek + 2} is unlocked
+          </div>
+        )}
+
+        <WeekTimeline
+          weeks={weeks}
+          activeWeek={activeWeek}
+          unlockedWeekIndex={unlockedWeekIndex}
+          passedWeeks={passedWeeks}
+          onSelectWeek={handleWeekChange}
+        />
       </motion.div>
     </div>
   );

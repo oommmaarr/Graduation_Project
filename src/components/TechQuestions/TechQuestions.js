@@ -255,11 +255,13 @@ function ResultScreen() {
   const hoursPerWeek = useInterviewStore((s) => s.hoursPerWeek);
   const setHoursPerWeek = useInterviewStore((s) => s.setHoursPerWeek);
   const generateRoadmap = useInterviewStore((s) => s.generateRoadmap);
+  const hasCachedRoadmap = useInterviewStore((s) => s.hasCachedRoadmap);
   const roadmapLoading = useInterviewStore((s) => s.roadmapLoading);
   const roadmapError = useInterviewStore((s) => s.roadmapError);
 
   const { track_name, reasoning, confidence_score, suggested_courses } = recommendation || {};
   const pct = confidence_score != null ? Math.round(confidence_score * 100) : null;
+  const hasSavedRoadmap = hasCachedRoadmap(track_name, hoursPerWeek);
 
   return (
     <div className="max-w-xl mx-auto px-4 py-10 animate-[slideQ_0.5s_ease_both]">
@@ -345,6 +347,12 @@ function ResultScreen() {
             </p>
           )}
 
+          {hasSavedRoadmap && (
+            <p className="text-xs text-[#0094BD] bg-[#0094BD]/8 border border-[#0094BD]/20 rounded-lg px-3 py-2">
+              A saved roadmap for this track ({hoursPerWeek}h/week) is on your device — open it instantly without calling the AI again.
+            </p>
+          )}
+
           {/* Actions — stack on mobile, side by side on sm+ */}
           <div className="flex flex-col sm:flex-row items-stretch gap-3">
             <button
@@ -355,18 +363,18 @@ function ResultScreen() {
             </button>
             <button
               type="button"
-              onClick={generateRoadmap}
+              onClick={() => generateRoadmap()}
               disabled={roadmapLoading}
               className="flex w-full sm:flex-1 items-center justify-center gap-2 px-6 py-3 rounded-full text-white text-sm font-semibold whitespace-nowrap bg-gradient-to-r from-[#7E1487] to-[#1387AE] shadow-[0_4px_20px_rgba(19,135,174,0.35)] hover:-translate-y-0.5 hover:shadow-[0_8px_28px_rgba(19,135,174,0.45)] active:scale-95 transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
             >
               {roadmapLoading ? (
                 <>
                   <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  Generating roadmap…
+                  {hasSavedRoadmap ? "Opening roadmap…" : "Generating roadmap…"}
                 </>
               ) : (
                 <>
-                  Generate My Roadmap
+                  {hasSavedRoadmap ? "Open Saved Roadmap" : "Generate My Roadmap"}
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M5 12h14M12 5l7 7-7 7" />
                   </svg>
@@ -374,6 +382,17 @@ function ResultScreen() {
               )}
             </button>
           </div>
+
+          {hasSavedRoadmap && (
+            <button
+              type="button"
+              onClick={() => generateRoadmap({ force: true })}
+              disabled={roadmapLoading}
+              className="self-center text-xs font-medium text-gray-400 underline-offset-2 transition hover:text-[#1387AE] hover:underline disabled:opacity-50 cursor-pointer"
+            >
+              Regenerate with AI (uses API quota)
+            </button>
+          )}
         </div>
       </div>
     </div>
