@@ -12,8 +12,16 @@ const QUIZ_API_BASE =
 const PROGRESS_API_BASE =
   import.meta.env.VITE_PROGRESS_API_URL ||
   "https://progresstracking-production.up.railway.app";
+const PROJECT_API_BASE =
+  import.meta.env.VITE_PROJECT_API_URL ||
+  "https://syntra-ai-projectrecommend-production.up.railway.app";
+const EVALUATION_API_BASE =
+  import.meta.env.VITE_EVALUATION_API_URL ||
+  "https://syntraai-production-08b1.up.railway.app";
 
 const PASS_THRESHOLD = 0.7;
+
+let evaluationPollTimer = null;
 
 export function extractRoadmapCourses(roadmap) {
   const courses = [];
@@ -49,6 +57,12 @@ export function computeTrackProgress(roadmap, passedWeeks, courseWeights) {
     weighted += courseWeights[name] ?? 0;
   }
   return Math.round(Math.min(1, weighted) * 100);
+}
+
+export function isTrackComplete(roadmap, passedWeeks) {
+  const weeks = roadmap?.roadmap ?? [];
+  if (weeks.length === 0) return false;
+  return weeks.every((_, i) => passedWeeks.includes(i));
 }
 
 export function collectWeekUrls(week) {
@@ -140,6 +154,14 @@ const useInterviewStore = create(
       savedRoadmaps: {},
       progressByRoadmapKey: {},
       roadmapFromCache: false,
+      savedProjectsByKey: {},
+      projectSuggestions: null,
+      projectLoading: false,
+      projectError: null,
+      evaluationLoading: false,
+      evaluationError: null,
+      evaluationStatus: null,
+      evaluationResults: null,
 
       // ── Week quiz session (transient) ───────────────────────────────────────
       weekQuizOpen: false,
@@ -397,7 +419,197 @@ const useInterviewStore = create(
         }
       },
 
+      generateProjectSuggestions: async ({ force = false } = {}) => {
+        const { roadmap, activeRoadmapKey, savedProjectsByKey } = get();
+        const track = roadmap?.track_name;
+        if (!track) return;
+
+        if (activeRoadmapKey && savedProjectsByKey[activeRoadmapKey] && !force) {
+          set({
+            projectSuggestions: savedProjectsByKey[activeRoadmapKey].projects,
+            projectLoading: false,
+            projectError: null,
+          });
+          return;
+        }
+
+        const technologies = extractRoadmapCourses(roadmap);
+        if (technologies.length === 0) {
+          set({ projectError: "No skills found in your roadmap." });
+          return;
+        }
+
+        set({ projectLoading: true, projectError: null });
+        try {
+          const res = await fetch(`${PROJECT_API_BASE}/api/projects/generate`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              accept: "application/json",
+            },
+            body: JSON.stringify({ track, technologies }),
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            const detail = err.detail?.[0]?.msg || err.detail || `Server error: ${res.status}`;
+            throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+          }
+          const data = await res.json();
+          const projects = data.projects ?? [];
+
+          set((s) => ({
+            projectSuggestions: projects,
+            projectLoading: false,
+            projectError: null,
+            savedProjectsByKey: activeRoadmapKey
+              ? {
+                  ...s.savedProjectsByKey,
+                  [activeRoadmapKey]: { projects, generatedAt: Date.now() },
+                }
+              : s.savedProjectsByKey,
+          }));
+        } catch (err) {
+          set({ projectLoading: false, projectError: err.message });
+        }
+      },
+
+      stopEvaluationPolling: () => {
+        if (evaluationPollTimer) {
+          clearTimeout(evaluationPollTimer);
+          evaluationPollTimer = null;
+        }
+      },
+
+      pollEvaluationResults: (studentId) => {
+        get().stopEvaluationPolling();
+
+        const poll = async (attempt = 0) => {
+          if (attempt > 40) {
+            set({
+              evaluationLoading: false,
+              evaluationError: "Evaluation is taking longer than expected. Try again later.",
+              evaluationStatus: "timeout",
+            });
+            return;
+          }
+
+          try {
+            const res = await fetch(
+              `${EVALUATION_API_BASE}/results/${encodeURIComponent(studentId)}`,
+              { headers: { accept: "application/json" } }
+            );
+            if (!res.ok) {
+              const err = await res.json().catch(() => ({}));
+              console.log(
+                `%c[/results/${studentId}] error response`,
+                "color:red;font-weight:bold",
+                err
+              );
+              const detail = err.detail?.[0]?.msg || err.detail || `Server error: ${res.status}`;
+              throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+            }
+            const data = await res.json();
+            console.log(
+              `%c[/results/${studentId}] poll #${attempt + 1} response`,
+              "color:#0094BD;font-weight:bold",
+              data
+            );
+
+            if (data.status === "Processing") {
+              set({
+                evaluationResults: data,
+                evaluationLoading: true,
+                evaluationStatus: "processing",
+                evaluationError: null,
+              });
+              evaluationPollTimer = setTimeout(() => poll(attempt + 1), 3000);
+            } else {
+              set({
+                evaluationResults: data,
+                evaluationLoading: false,
+                evaluationStatus: "complete",
+                evaluationError: null,
+              });
+            }
+          } catch (err) {
+            set({
+              evaluationLoading: false,
+              evaluationError: err.message,
+              evaluationStatus: "error",
+            });
+          }
+        };
+
+        poll();
+      },
+
+      submitProjectEvaluation: async ({
+        projectLink,
+        trackId,
+        studentId,
+        project_description,
+      }) => {
+        if (!projectLink?.trim()) {
+          set({ evaluationError: "Please enter your project link." });
+          return;
+        }
+        if (!studentId) {
+          set({ evaluationError: "You must be logged in to submit a project." });
+          return;
+        }
+
+        get().stopEvaluationPolling();
+        set({
+          evaluationLoading: true,
+          evaluationError: null,
+          evaluationStatus: "submitting",
+          evaluationResults: null,
+        });
+
+        try {
+          const res = await fetch(`${EVALUATION_API_BASE}/evaluate`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              accept: "application/json",
+            },
+            body: JSON.stringify({
+              projectLink: projectLink.trim(),
+              trackId: String(trackId),
+              studentId: String(studentId),
+              project_description: project_description?.trim() || "",
+            }),
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            console.log(
+              "%c[/evaluate] error response",
+              "color:red;font-weight:bold",
+              err
+            );
+            const detail = err.detail?.[0]?.msg || err.detail || `Server error: ${res.status}`;
+            throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+          }
+
+          const data = await res.json();
+          console.log(
+            "%c[/evaluate] response",
+            "color:#7E1487;font-weight:bold",
+            data
+          );
+          set({ evaluationStatus: "processing" });
+          get().pollEvaluationResults(studentId);
+        } catch (err) {
+          set({
+            evaluationLoading: false,
+            evaluationError: err.message,
+            evaluationStatus: "error",
+          });
+        }
+      },
+
       clearRoadmap: () => {
+        get().stopEvaluationPolling();
         get().syncProgressCache();
         set({
           roadmap: null,
@@ -611,6 +823,10 @@ const useInterviewStore = create(
               }
             ),
           }));
+
+          if (isTrackComplete(roadmap, nextPassed)) {
+            get().generateProjectSuggestions();
+          }
         } else {
           set({
             weekQuizScore: score,
@@ -633,6 +849,7 @@ const useInterviewStore = create(
         activeRoadmapKey: state.activeRoadmapKey,
         savedRoadmaps: state.savedRoadmaps,
         progressByRoadmapKey: state.progressByRoadmapKey,
+        savedProjectsByKey: state.savedProjectsByKey,
         unlockedWeekIndex: state.unlockedWeekIndex,
         passedWeeks: state.passedWeeks,
         progressTrackName: state.progressTrackName,

@@ -20,8 +20,11 @@ import {
 } from "lucide-react";
 import useInterviewStore, {
   computeTrackProgress,
+  extractRoadmapCourses,
+  isTrackComplete,
 } from "@/store/useInterviewStore";
 import WeekQuizPanel from "@/components/Roadmap/WeekQuizPanel";
+import ProjectSuggestionsPanel from "@/components/Roadmap/ProjectSuggestionsPanel";
 
 const SKILL_COLORS = [
   "#1387AE",
@@ -931,6 +934,7 @@ export default function RoadmapView() {
   const courseWeightsLoading = useInterviewStore((s) => s.courseWeightsLoading);
   const fetchCourseWeights = useInterviewStore((s) => s.fetchCourseWeights);
   const openWeekQuiz = useInterviewStore((s) => s.openWeekQuiz);
+  const generateProjectSuggestions = useInterviewStore((s) => s.generateProjectSuggestions);
 
   const weeks = roadmap?.roadmap ?? [];
   const [activeWeek, setActiveWeek] = useState(0);
@@ -958,6 +962,19 @@ export default function RoadmapView() {
     () => computeTrackProgress(roadmap, passedWeeks, courseWeights),
     [roadmap, passedWeeks, courseWeights]
   );
+
+  const trackComplete = useMemo(
+    () => isTrackComplete(roadmap, passedWeeks),
+    [roadmap, passedWeeks]
+  );
+
+  const acquiredSkills = useMemo(() => extractRoadmapCourses(roadmap), [roadmap]);
+
+  useEffect(() => {
+    if (trackComplete) {
+      generateProjectSuggestions();
+    }
+  }, [trackComplete, generateProjectSuggestions]);
 
   useEffect(() => {
     const track = roadmap?.track_name;
@@ -1235,6 +1252,30 @@ export default function RoadmapView() {
           </div>
         )}
 
+        {import.meta.env.DEV && !trackComplete && weeks.length > 0 && (
+          <div className="border-t border-dashed border-amber-300/60 bg-amber-50/50 px-6 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-xs text-amber-800">
+                Dev only — simulate finishing all weeks to preview project ideas.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  const allPassed = weeks.map((_, i) => i);
+                  useInterviewStore.setState({
+                    passedWeeks: allPassed,
+                    unlockedWeekIndex: weeks.length - 1,
+                  });
+                  useInterviewStore.getState().syncProgressCache();
+                }}
+                className="rounded-full border border-amber-400/50 bg-white px-4 py-1.5 text-xs font-semibold text-amber-900 transition hover:bg-amber-100 cursor-pointer"
+              >
+                Test: Complete track
+              </button>
+            </div>
+          </div>
+        )}
+
         <WeekTimeline
           weeks={weeks}
           activeWeek={activeWeek}
@@ -1242,6 +1283,13 @@ export default function RoadmapView() {
           passedWeeks={passedWeeks}
           onSelectWeek={handleWeekChange}
         />
+
+        {trackComplete && (
+          <ProjectSuggestionsPanel
+            trackName={roadmap.track_name}
+            technologies={acquiredSkills}
+          />
+        )}
       </motion.div>
     </div>
   );
