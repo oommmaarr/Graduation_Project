@@ -1,41 +1,58 @@
 import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
-import { SplitText } from "gsap/all";
-import { useRef, useState } from "react";
+import { ScrollTrigger, SplitText } from "gsap/all";
+import { useRef } from "react";
 import { useMediaQuery } from "react-responsive";
 
-const HeroSec = () => {
-  const videoRef = useRef();
-  const [videoFailed, setVideoFailed] = useState(false);
+function isMobileViewport() {
+  return typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches;
+}
 
+function killHeroScrollTriggers() {
+  ScrollTrigger.getAll().forEach((trigger) => {
+    const el = trigger.trigger;
+    if (!el) return;
+    if (el.id === "hero" || el.closest?.("#hero")) {
+      trigger.kill();
+    }
+  });
+}
+
+const HeroSec = () => {
+  const videoRef = useRef(null);
   const isMobile = useMediaQuery({ maxWidth: 767 });
 
-  useGSAP(() => {
-    const heroSplit = new SplitText(".title", {
-      type: "chars, words",
-    });
+  useGSAP(
+    () => {
+      const heroSplit = new SplitText(".title", {
+        type: "chars, words",
+      });
 
-    const paragraphSplit = new SplitText(".subtitle", {
-      type: "lines",
-    });
+      const paragraphSplit = new SplitText(".subtitle", {
+        type: "lines",
+      });
 
-    gsap.from(heroSplit.chars, {
-      yPercent: 100,
-      duration: 1.8,
-      ease: "expo.out",
-      stagger: 0.06,
-    });
+      gsap.from(heroSplit.chars, {
+        yPercent: 100,
+        duration: 1.8,
+        ease: "expo.out",
+        stagger: 0.06,
+      });
 
-    gsap.from(paragraphSplit.lines, {
-      opacity: 0,
-      yPercent: 100,
-      duration: 1.8,
-      ease: "expo.out",
-      stagger: 0.06,
-      delay: 1,
-    });
+      gsap.from(paragraphSplit.lines, {
+        opacity: 0,
+        yPercent: 100,
+        duration: 1.8,
+        ease: "expo.out",
+        stagger: 0.06,
+        delay: 1,
+      });
 
-    if (!isMobile) {
+      if (isMobileViewport()) {
+        killHeroScrollTriggers();
+        return;
+      }
+
       gsap
         .timeline({
           scrollTrigger: {
@@ -48,59 +65,46 @@ const HeroSec = () => {
         .to(".right-leaf", { y: 200 }, 0)
         .to(".left-leaf", { y: -200 }, 0)
         .to(".arrow", { y: 100 }, 0);
-    }
 
-    if (!videoRef.current) return;
+      const video = videoRef.current;
+      if (!video) return;
 
-    const video = videoRef.current;
+      const tl = gsap.timeline({
+        scrollTrigger: {
+          trigger: video,
+          start: "center 60%",
+          end: "bottom top",
+          scrub: true,
+          pin: true,
+        },
+      });
 
-    if (isMobile) {
-      const lockFrame = () => {
-        if (video.duration) {
-          video.currentTime = Math.min(video.duration - 0.04, video.duration * 0.78);
-        }
-        video.pause();
+      video.onloadedmetadata = () => {
+        tl.to(video, {
+          currentTime: video.duration,
+        });
       };
 
-      if (video.readyState >= 1) {
-        lockFrame();
-      } else {
-        video.addEventListener("loadedmetadata", lockFrame, { once: true });
-      }
-      return;
-    }
-
-    const tl = gsap.timeline({
-      scrollTrigger: {
-        trigger: video,
-        start: "center 60%",
-        end: "bottom top",
-        scrub: true,
-        pin: true,
-      },
-    });
-
-    video.onloadedmetadata = () => {
-      tl.to(video, {
-        currentTime: video.duration,
-      });
-    };
-  }, { dependencies: [isMobile] });
+      return () => {
+        killHeroScrollTriggers();
+        if (video) gsap.set(video, { clearProps: "transform,top,left,width,height" });
+      };
+    },
+    { dependencies: [isMobile] }
+  );
 
   return (
-    <section id="hero">
+    <section id="hero" className={isMobile ? "hero--mobile-static" : undefined}>
       <div className="hero-media">
-        {!videoFailed ? (
-          <video
-            ref={videoRef}
-            muted
-            playsInline
-            preload="auto"
-            src="/videos/output2_scrub.mp4"
-            onError={() => setVideoFailed(true)}
+        {isMobile ? (
+          <img
+            src="/images/hero-mobile-poster.jpg"
+            alt=""
+            className="hero-mobile-poster"
+            draggable={false}
           />
         ) : (
-          <div className="hero-fallback" />
+          <video ref={videoRef} muted playsInline preload="auto" src="/videos/output2_scrub.mp4" />
         )}
       </div>
       <div className="noisy pointer-events-none" />

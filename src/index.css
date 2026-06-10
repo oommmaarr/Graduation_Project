@@ -115,10 +115,28 @@ body {
     }
   }
 
-  #hero video {
+  #hero video,
+  #hero .hero-mobile-poster {
     @apply w-full md:h-[80%] h-1/2 absolute bottom-0 left-0 md:object-contain object-bottom object-cover;
     mask-image: radial-gradient(ellipse 65% 75% at 50% 60%, black 30%, transparent 75%);
     -webkit-mask-image: radial-gradient(ellipse 65% 75% at 50% 60%, black 30%, transparent 75%);
+  }
+
+  #hero.hero--mobile-static {
+    min-height: 100svh;
+    overflow: hidden;
+  }
+
+  #hero.hero--mobile-static .hero-media,
+  #hero.hero--mobile-static .hero-mobile-poster,
+  #hero.hero--mobile-static .noisy {
+    transform: none !important;
+  }
+
+  #hero.hero--mobile-static .pin-spacer {
+    height: auto !important;
+    padding: 0 !important;
+    margin: 0 !important;
   }
 
   #cocktails {
