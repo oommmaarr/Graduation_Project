@@ -115,20 +115,10 @@ body {
     }
   }
 
-  #hero video,
-  #hero .hero-video {
+  #hero video {
     @apply w-full md:h-[80%] h-1/2 absolute bottom-0 left-0 md:object-contain object-bottom object-cover;
-    transform: translateZ(0);
-    backface-visibility: hidden;
     mask-image: radial-gradient(ellipse 65% 75% at 50% 60%, black 30%, transparent 75%);
     -webkit-mask-image: radial-gradient(ellipse 65% 75% at 50% 60%, black 30%, transparent 75%);
-  }
-
-  #hero .hero-video--mobile {
-    height: 46%;
-    mask-image: none;
-    -webkit-mask-image: none;
-    object-fit: cover;
   }
 
   #cocktails {
