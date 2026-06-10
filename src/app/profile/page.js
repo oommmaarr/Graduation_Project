@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import gsap from "gsap";
 import {
   User,
@@ -11,8 +11,15 @@ import {
   Camera,
   Loader2,
   LogOut,
+  GraduationCap,
+  Map,
 } from "lucide-react";
+import { Link } from "react-router-dom";
 import useAuthStore from "@/store/useAuthStore";
+import useInterviewStore, {
+  getCompletedSkillNames,
+  syncPassedSkillsToProfile,
+} from "@/store/useInterviewStore";
 
 function formatDate(iso) {
   if (!iso) return "—";
@@ -40,6 +47,62 @@ function InfoRow({ label, value, icon: Icon }) {
   );
 }
 
+function LearnedSkillsSection({ trackName, skills }) {
+  return (
+    <div className="mt-8 rounded-2xl border border-gray-200 bg-white px-5 py-5 sm:px-6">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-[#e8f4fc] to-[#f3e8ff] text-[#1387AE]">
+            <GraduationCap size={18} />
+          </div>
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+              Skills acquired
+            </p>
+            {trackName && (
+              <p className="mt-0.5 flex items-center gap-1.5 text-sm font-semibold text-gray-900">
+                <Map size={14} className="text-[#7E1487]" />
+                {trackName}
+              </p>
+            )}
+          </div>
+        </div>
+        {skills.length > 0 && (
+          <span className="rounded-full bg-[#1387AE]/10 px-3 py-1 text-xs font-bold text-[#1387AE]">
+            {skills.length} skill{skills.length !== 1 ? "s" : ""}
+          </span>
+        )}
+      </div>
+
+      {skills.length > 0 ? (
+        <div className="flex flex-wrap gap-2">
+          {skills.map((skill) => (
+            <span
+              key={skill}
+              className="inline-flex items-center gap-1.5 rounded-full border border-[#1387AE]/20 bg-gradient-to-r from-[#1387AE]/8 to-[#7E1487]/5 px-3.5 py-1.5 text-sm font-medium text-gray-800"
+            >
+              <CheckCircle2 size={13} className="shrink-0 text-[#0094BD]" />
+              {skill}
+            </span>
+          ))}
+        </div>
+      ) : (
+        <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50/80 px-4 py-6 text-center">
+          <p className="text-sm text-gray-500">
+            No skills recorded yet. Complete week quizzes on your roadmap to build your skill profile.
+          </p>
+          <Link
+            to="/tech"
+            className="mt-3 inline-flex rounded-full bg-gradient-to-r from-[#1387AE] to-[#7E1487] px-5 py-2 text-xs font-semibold text-white transition hover:opacity-95"
+          >
+            Go to learning path
+          </Link>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ProfilePage() {
   const user = useAuthStore((s) => s.user);
   const token = useAuthStore((s) => s.token);
@@ -50,6 +113,63 @@ export default function ProfilePage() {
   const error = useAuthStore((s) => s.error);
   const clearError = useAuthStore((s) => s.clearError);
 
+  const roadmap = useInterviewStore((s) => s.roadmap);
+  const passedWeeks = useInterviewStore((s) => s.passedWeeks);
+  const progressTrackName = useInterviewStore((s) => s.progressTrackName);
+  const savedRoadmaps = useInterviewStore((s) => s.savedRoadmaps);
+  const activeRoadmapKey = useInterviewStore((s) => s.activeRoadmapKey);
+  const progressByRoadmapKey = useInterviewStore((s) => s.progressByRoadmapKey);
+
+  const { learnedSkills, trackName, skillsRoadmap, skillsPassedWeeks } = useMemo(() => {
+    let rm = roadmap;
+    let weeks = passedWeeks;
+    let track = roadmap?.track_name || progressTrackName;
+
+    if (!rm && activeRoadmapKey && savedRoadmaps[activeRoadmapKey]) {
+      rm = savedRoadmaps[activeRoadmapKey].roadmap;
+      track = rm?.track_name || track;
+      weeks = progressByRoadmapKey[activeRoadmapKey]?.passedWeeks ?? passedWeeks;
+    }
+
+    if (!rm && progressTrackName) {
+      const key = Object.keys(savedRoadmaps).find(
+        (k) =>
+          savedRoadmaps[k].roadmap?.track_name === progressTrackName ||
+          savedRoadmaps[k].trackName === progressTrackName
+      );
+      if (key) {
+        rm = savedRoadmaps[key].roadmap;
+        track = rm?.track_name || progressTrackName;
+        weeks = progressByRoadmapKey[key]?.passedWeeks ?? passedWeeks;
+      }
+    }
+
+    const skills = rm
+      ? [...getCompletedSkillNames(rm, weeks)].sort((a, b) => a.localeCompare(b))
+      : [];
+
+    return {
+      learnedSkills: skills,
+      trackName: track,
+      skillsRoadmap: rm,
+      skillsPassedWeeks: weeks,
+    };
+  }, [
+    roadmap,
+    passedWeeks,
+    progressTrackName,
+    savedRoadmaps,
+    activeRoadmapKey,
+    progressByRoadmapKey,
+  ]);
+
+  const displaySkills = useMemo(() => {
+    const merged = new Set([...(user?.skills ?? []), ...learnedSkills]);
+    return [...merged].sort((a, b) => a.localeCompare(b));
+  }, [user?.skills, learnedSkills]);
+
+  const isLearner = user?.role === "learner";
+
   const fileInputRef = useRef(null);
   const headerBlockRef = useRef(null);
   const cardRef = useRef(null);
@@ -59,6 +179,13 @@ export default function ProfilePage() {
   useEffect(() => {
     if (token) fetchMe();
   }, [token, fetchMe]);
+
+  useEffect(() => {
+    if (!token || user?.role !== "learner" || !skillsRoadmap || skillsPassedWeeks.length === 0) {
+      return;
+    }
+    syncPassedSkillsToProfile(skillsRoadmap, skillsPassedWeeks);
+  }, [token, user?.role, skillsRoadmap, skillsPassedWeeks]);
 
   useEffect(() => {
     if (!token || (isLoading && !user)) return;
@@ -292,6 +419,10 @@ export default function ProfilePage() {
                     <InfoRow label="Member since" value={formatDate(user?.createdAt)} icon={Calendar} />
                     <InfoRow label="Last updated" value={formatDate(user?.updatedAt)} icon={Calendar} />
                   </div>
+
+                  {isLearner && (
+                    <LearnedSkillsSection trackName={trackName} skills={displaySkills} />
+                  )}
 
                   <div className="mt-8 flex justify-center lg:hidden">
                     <button

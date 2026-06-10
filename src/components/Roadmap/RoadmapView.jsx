@@ -22,6 +22,8 @@ import useInterviewStore, {
   computeTrackProgress,
   extractRoadmapCourses,
   isTrackComplete,
+  syncPassedSkillsToProfile,
+  syncTrackFinishedIfComplete,
 } from "@/store/useInterviewStore";
 import WeekQuizPanel from "@/components/Roadmap/WeekQuizPanel";
 import ProjectSuggestionsPanel from "@/components/Roadmap/ProjectSuggestionsPanel";
@@ -972,9 +974,11 @@ export default function RoadmapView() {
 
   useEffect(() => {
     if (trackComplete) {
+      syncPassedSkillsToProfile(roadmap, passedWeeks);
+      syncTrackFinishedIfComplete(roadmap, passedWeeks);
       generateProjectSuggestions();
     }
-  }, [trackComplete, generateProjectSuggestions]);
+  }, [trackComplete, roadmap, passedWeeks, generateProjectSuggestions]);
 
   useEffect(() => {
     const track = roadmap?.track_name;
@@ -1267,6 +1271,10 @@ export default function RoadmapView() {
                     unlockedWeekIndex: weeks.length - 1,
                   });
                   useInterviewStore.getState().syncProgressCache();
+                  const rm = useInterviewStore.getState().roadmap;
+                  syncPassedSkillsToProfile(rm, allPassed);
+                  syncTrackFinishedIfComplete(rm, allPassed);
+                  generateProjectSuggestions();
                 }}
                 className="rounded-full border border-amber-400/50 bg-white px-4 py-1.5 text-xs font-semibold text-amber-900 transition hover:bg-amber-100 cursor-pointer"
               >

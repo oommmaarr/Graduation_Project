@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import useAuthStore from "./useAuthStore";
 
 const RECOMMENDATION_API_BASE =
   "https://recommendationsystem-production-9a13.up.railway.app";
@@ -22,6 +23,40 @@ const EVALUATION_API_BASE =
 const PASS_THRESHOLD = 0.7;
 
 let evaluationPollTimer = null;
+
+function syncWeekSkillsToProfile(roadmap, weekIndex) {
+  syncPassedSkillsToProfile(roadmap, [weekIndex]);
+}
+
+export function syncPassedSkillsToProfile(roadmap, passedWeeks) {
+  const { token, user, syncWeekSkills } = useAuthStore.getState();
+  if (!token || !passedWeeks?.length) return;
+
+  const serverSkills = new Set(user?.skills ?? []);
+  const toSync = [...getCompletedSkillNames(roadmap, passedWeeks)].filter(
+    (name) => !serverSkills.has(name)
+  );
+  if (toSync.length === 0) return;
+
+  syncWeekSkills(toSync);
+}
+
+export function isTrackComplete(roadmap, passedWeeks) {
+  const weeks = roadmap?.roadmap ?? [];
+  if (weeks.length === 0) return false;
+  return weeks.every((_, i) => passedWeeks.includes(i));
+}
+
+export function syncTrackFinishedIfComplete(roadmap, passedWeeks) {
+  if (!isTrackComplete(roadmap, passedWeeks)) return;
+
+  syncPassedSkillsToProfile(roadmap, passedWeeks);
+
+  const { token, user, finishTrack } = useAuthStore.getState();
+  if (!token || user?.trackFinished) return;
+
+  finishTrack();
+}
 
 export function extractRoadmapCourses(roadmap) {
   const courses = [];
@@ -57,12 +92,6 @@ export function computeTrackProgress(roadmap, passedWeeks, courseWeights) {
     weighted += courseWeights[name] ?? 0;
   }
   return Math.round(Math.min(1, weighted) * 100);
-}
-
-export function isTrackComplete(roadmap, passedWeeks) {
-  const weeks = roadmap?.roadmap ?? [];
-  if (weeks.length === 0) return false;
-  return weeks.every((_, i) => passedWeeks.includes(i));
 }
 
 export function collectWeekUrls(week) {
@@ -796,6 +825,7 @@ const useInterviewStore = create(
 
         const score = correct / questions.length;
         const passed = score >= PASS_THRESHOLD;
+        const isNewPass = passed && !passedWeeks.includes(weekQuizWeekIndex);
 
         if (passed) {
           const nextPassed = passedWeeks.includes(weekQuizWeekIndex)
@@ -824,7 +854,12 @@ const useInterviewStore = create(
             ),
           }));
 
+          if (isNewPass) {
+            syncWeekSkillsToProfile(roadmap, weekQuizWeekIndex);
+          }
+
           if (isTrackComplete(roadmap, nextPassed)) {
+            syncTrackFinishedIfComplete(roadmap, nextPassed);
             get().generateProjectSuggestions();
           }
         } else {

@@ -1,5 +1,21 @@
 import React, { useState, useEffect } from "react";
-import { Plus, Trash2, ArrowRight, CheckCircle2, User, Briefcase, FileText, Loader2, Wand2 } from "lucide-react";
+import {
+  Plus,
+  Trash2,
+  ArrowRight,
+  CheckCircle2,
+  User,
+  Briefcase,
+  Loader2,
+  Wand2,
+  BookOpen,
+  ExternalLink,
+  ChevronDown,
+  ChevronUp,
+  Clock,
+  Route,
+  AlertTriangle,
+} from "lucide-react";
 import axios from "axios";
 
 const PREDEFINED_SKILLS = [
@@ -12,11 +28,429 @@ const Keyframes = () => (
   <style>{`
     @keyframes fadeIn { from { opacity:0 } to { opacity:1 } }
     @keyframes slideQ { from { opacity:0; transform:translateY(14px) } to { opacity:1; transform:translateY(0) } }
+    @keyframes pathReveal { from { opacity:0; transform:translateY(8px) } to { opacity:1; transform:translateY(0) } }
+    @keyframes shimmer { 0% { background-position: 200% center } 100% { background-position: -200% center } }
   `}</style>
 );
 
 // ─── API Setup ────────────────────────────────────────────────────────────────
-const TEAM_API_URL = "https://taskdistribution-production.up.railway.app";
+const TEAM_API_URL =
+  import.meta.env.VITE_TEAM_API_URL ||
+  "https://taskdistribution-production.up.railway.app";
+const MINI_PATH_API_URL =
+  import.meta.env.VITE_MINI_PATH_API_URL ||
+  "https://syntra-ai-production.up.railway.app";
+
+function normalizeSkill(skill) {
+  return String(skill).trim().toLowerCase();
+}
+
+function memberHasSkill(memberSkills, skill) {
+  const target = normalizeSkill(skill);
+  return (memberSkills ?? []).some((s) => {
+    const normalized = normalizeSkill(s);
+    return (
+      normalized === target ||
+      normalized.includes(target) ||
+      target.includes(normalized)
+    );
+  });
+}
+
+function computeLearningGaps(teamMembers, results) {
+  const gapsByMember = {};
+
+  for (const member of teamMembers) {
+    const name = member.name.trim();
+    if (!name) continue;
+    gapsByMember[name] = new Set();
+  }
+
+  for (const item of results?.assigned_tasks ?? []) {
+    const name = item.assigned_to;
+    const member = teamMembers.find((m) => m.name.trim() === name);
+    const memberSkills = member?.skills ?? [];
+
+    for (const skill of item.task?.Required_Skills ?? []) {
+      if (!memberHasSkill(memberSkills, skill)) {
+        if (!gapsByMember[name]) gapsByMember[name] = new Set();
+        gapsByMember[name].add(skill);
+      }
+    }
+  }
+
+  for (const task of results?.unassigned_tasks ?? []) {
+    for (const skill of task.Required_Skills ?? []) {
+      for (const member of teamMembers) {
+        const name = member.name.trim();
+        if (!name || memberHasSkill(member.skills, skill)) continue;
+        if (!gapsByMember[name]) gapsByMember[name] = new Set();
+        gapsByMember[name].add(skill);
+      }
+    }
+  }
+
+  return Object.fromEntries(
+    Object.entries(gapsByMember).map(([name, skills]) => [
+      name,
+      [...skills].sort((a, b) => a.localeCompare(b)),
+    ])
+  );
+}
+
+function skillsMatch(a, b) {
+  const left = normalizeSkill(a);
+  const right = normalizeSkill(b);
+  return left === right || left.includes(right) || right.includes(left);
+}
+
+function findTaskContextForGap(memberName, missingSkill, teamMembers, results, projectDescription) {
+  const member = teamMembers.find((m) => m.name.trim() === memberName);
+  const memberSkills = member?.skills ?? [];
+
+  for (const item of results?.assigned_tasks ?? []) {
+    if (item.assigned_to !== memberName) continue;
+    const required = item.task?.Required_Skills ?? [];
+    if (required.some((s) => skillsMatch(s, missingSkill))) {
+      return {
+        task_title: item.task.Task_Name,
+        task_description: item.task.Description,
+        member_skills: memberSkills,
+        missing_skill: missingSkill,
+      };
+    }
+  }
+
+  for (const task of results?.unassigned_tasks ?? []) {
+    const required = task.Required_Skills ?? [];
+    if (required.some((s) => skillsMatch(s, missingSkill))) {
+      return {
+        task_title: task.Task_Name,
+        task_description: task.Description,
+        member_skills: memberSkills,
+        missing_skill: missingSkill,
+      };
+    }
+  }
+
+  return {
+    task_title: `Learn ${missingSkill}`,
+    task_description:
+      projectDescription.trim() ||
+      `The team member needs to learn ${missingSkill} to complete assigned project work.`,
+    member_skills: memberSkills,
+    missing_skill: missingSkill,
+  };
+}
+
+function miniPathKey(memberName, skill) {
+  return `${memberName}::${skill}`;
+}
+
+function sumPathDuration(steps) {
+  let total = 0;
+  for (const step of steps ?? []) {
+    const match = String(step.duration ?? "").match(/(\d+)/);
+    if (match) total += Number.parseInt(match[1], 10);
+  }
+  return total > 0 ? `~${total}h` : null;
+}
+
+function MiniPathTimeline({ data }) {
+  if (!data?.mini_path?.length) return null;
+
+  const totalDuration = sumPathDuration(data.mini_path);
+
+  return (
+    <div className="relative px-4 pb-4 pt-1">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2 border-b border-[#1387AE]/10 pb-3">
+        <div className="flex items-center gap-2">
+          <Route size={14} className="text-[#7E1487]" />
+          <span className="text-xs font-bold uppercase tracking-wider text-gray-500">
+            Learning roadmap
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="rounded-full bg-[#7E1487]/10 px-2.5 py-0.5 text-[10px] font-bold text-[#7E1487]">
+            {data.mini_path.length} steps
+          </span>
+          {totalDuration && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-[#1387AE]/10 px-2.5 py-0.5 text-[10px] font-bold text-[#1387AE]">
+              <Clock size={10} />
+              {totalDuration}
+            </span>
+          )}
+        </div>
+      </div>
+
+      <ol className="relative space-y-0">
+        {data.mini_path.map((step, index) => {
+          const isLast = index === data.mini_path.length - 1;
+          return (
+            <li
+              key={step.step}
+              className="relative flex gap-4 pb-6 animate-[pathReveal_0.45s_ease_both]"
+              style={{ animationDelay: `${index * 80}ms` }}
+            >
+              {!isLast && (
+                <span
+                  className="absolute left-[15px] top-8 h-[calc(100%-8px)] w-px bg-gradient-to-b from-[#1387AE]/50 to-[#7E1487]/20"
+                  aria-hidden
+                />
+              )}
+              <span className="relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#7E1487] to-[#1387AE] text-xs font-bold text-white shadow-md shadow-[#1387AE]/25">
+                {step.step}
+              </span>
+              <div className="min-w-0 flex-1 rounded-2xl border border-gray-100 bg-white/90 p-3.5 shadow-sm transition-shadow hover:shadow-md">
+                <p className="text-sm font-semibold leading-snug text-gray-900">{step.topic}</p>
+                <div className="mt-2 flex flex-wrap items-center gap-3">
+                  {step.duration && (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-medium text-gray-500">
+                      <Clock size={11} />
+                      {step.duration}
+                    </span>
+                  )}
+                  {step.resource && (
+                    <a
+                      href={step.resource}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-[#1387AE]/10 to-[#7E1487]/10 px-2.5 py-1 text-[11px] font-semibold text-[#1387AE] transition hover:from-[#1387AE]/20 hover:to-[#7E1487]/20"
+                    >
+                      <ExternalLink size={11} />
+                      Open resource
+                    </a>
+                  )}
+                </div>
+              </div>
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
+}
+
+function SkillGapPill({
+  label,
+  isExpanded,
+  isLoading,
+  hasPath,
+  onGenerate,
+  onToggle,
+  activeStyle = false,
+}) {
+  return (
+    <div
+      className={`flex min-h-[76px] w-full flex-col rounded-xl border p-2 transition-all ${
+        activeStyle || isExpanded
+          ? "border-[#1387AE]/50 bg-[#1387AE]/10 shadow-sm"
+          : "border-gray-200 bg-white hover:border-[#1387AE]/25"
+      }`}
+    >
+      <div className="flex flex-1 items-center justify-center px-1 py-1.5 text-center">
+        <span className="text-[11px] font-semibold leading-snug text-gray-800 break-words">
+          {label}
+        </span>
+      </div>
+
+      <div className="mt-auto flex h-7 w-full items-center justify-center">
+        {isLoading && <Loader2 size={14} className="animate-spin text-[#1387AE]" />}
+
+        {!hasPath && !isLoading && (
+          <button
+            type="button"
+            onClick={onGenerate}
+            className="h-7 w-full rounded-lg bg-gradient-to-r from-[#7E1487] to-[#1387AE] text-[10px] font-bold text-white transition hover:opacity-90"
+          >
+            Generate
+          </button>
+        )}
+
+        {hasPath && !isLoading && (
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-expanded={isExpanded}
+            aria-label={isExpanded ? "Collapse path" : "Expand path"}
+            className="flex h-7 w-full items-center justify-center gap-1 rounded-lg border border-[#1387AE]/25 bg-white/80 text-[10px] font-bold text-[#1387AE] transition hover:bg-[#1387AE]/10"
+          >
+            {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            {isExpanded ? "Hide path" : "View path"}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function GapSkillsGroup({
+  memberName,
+  skills,
+  miniPaths,
+  miniPathLoading,
+  miniPathErrors,
+  onGenerate,
+}) {
+  const [expandedSkill, setExpandedSkill] = useState(null);
+
+  const handleGenerate = (skill) => {
+    setExpandedSkill(skill);
+    onGenerate(memberName, skill);
+  };
+
+  const toggleSkill = (skill) => {
+    const key = miniPathKey(memberName, skill);
+    if (!miniPaths[key]?.mini_path?.length) return;
+    setExpandedSkill((current) => (current === skill ? null : skill));
+  };
+
+  const activeKey = expandedSkill ? miniPathKey(memberName, expandedSkill) : null;
+  const activeData = activeKey ? miniPaths[activeKey] : null;
+  const activeLoading = activeKey && miniPathLoading === activeKey;
+  const activeError = activeKey ? miniPathErrors[activeKey] : null;
+  const showPanel = expandedSkill && (activeLoading || activeData || activeError);
+
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-2">
+        {skills.map((skill) => {
+          const key = miniPathKey(memberName, skill);
+          const hasPath = Boolean(miniPaths[key]?.mini_path?.length);
+          const isLoading = miniPathLoading === key;
+          const isExpanded = expandedSkill === skill;
+
+          return (
+            <SkillGapPill
+              key={skill}
+              label={skill}
+              isExpanded={isExpanded}
+              isLoading={isLoading}
+              hasPath={hasPath}
+              onGenerate={() => handleGenerate(skill)}
+              onToggle={() => toggleSkill(skill)}
+              activeStyle={isExpanded}
+            />
+          );
+        })}
+      </div>
+
+      {showPanel && (
+        <div className="overflow-hidden rounded-2xl border border-[#1387AE]/20 bg-gradient-to-br from-white to-[#1387AE]/5 shadow-sm">
+          {activeError && (
+            <p className="border-b border-red-100 bg-red-50 px-4 py-2.5 text-[11px] text-red-600">
+              {activeError}
+            </p>
+          )}
+
+          {activeLoading && (
+            <div className="space-y-3 px-4 py-4">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="flex gap-3">
+                  <div className="h-8 w-8 animate-pulse rounded-xl bg-gray-200" />
+                  <div className="h-14 flex-1 animate-pulse rounded-2xl bg-gray-100" />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {activeData && !activeLoading && (
+            <>
+              <MiniPathTimeline data={activeData} />
+              <div className="flex justify-end border-t border-[#1387AE]/10 px-4 py-2.5">
+                <button
+                  type="button"
+                  onClick={() => handleGenerate(expandedSkill)}
+                  className="text-[11px] font-semibold text-[#1387AE] transition hover:text-[#0b6281]"
+                >
+                  Regenerate path
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function UnassignedSkillRow({
+  skill,
+  needers,
+  task,
+  miniPaths,
+  miniPathLoading,
+  miniPathErrors,
+  onGenerate,
+}) {
+  const [activeMember, setActiveMember] = useState(null);
+
+  const handleGenerate = (memberName) => {
+    setActiveMember(memberName);
+    onGenerate(memberName, skill, task);
+  };
+
+  const toggleMember = (memberName) => {
+    const key = miniPathKey(memberName, skill);
+    if (!miniPaths[key]?.mini_path?.length) return;
+    setActiveMember((current) => (current === memberName ? null : memberName));
+  };
+
+  const activeKey = activeMember ? miniPathKey(activeMember, skill) : null;
+  const activeData = activeKey ? miniPaths[activeKey] : null;
+  const activeLoading = activeKey && miniPathLoading === activeKey;
+  const activeError = activeKey ? miniPathErrors[activeKey] : null;
+  const showPanel = activeMember && (activeLoading || activeData || activeError);
+
+  return (
+    <div className="rounded-xl border border-orange-100 bg-orange-50/40 p-3">
+      <p className="mb-2 text-xs font-bold text-orange-800">{skill}</p>
+      {needers.length > 0 ? (
+        <>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {needers.map((member) => {
+              const memberName = member.name.trim();
+              const key = miniPathKey(memberName, skill);
+              const hasPath = Boolean(miniPaths[key]?.mini_path?.length);
+              const isLoading = miniPathLoading === key;
+              const isExpanded = activeMember === memberName;
+
+              return (
+                <SkillGapPill
+                  key={member.id}
+                  label={memberName.split(" ")[0]}
+                  isExpanded={isExpanded}
+                  isLoading={isLoading}
+                  hasPath={hasPath}
+                  onGenerate={() => handleGenerate(memberName)}
+                  onToggle={() => toggleMember(memberName)}
+                  activeStyle={isExpanded}
+                />
+              );
+            })}
+          </div>
+
+          {showPanel && (
+            <div className="mt-3 overflow-hidden rounded-xl border border-[#1387AE]/20 bg-white">
+              {activeError && (
+                <p className="px-3 py-2 text-[10px] text-red-600">{activeError}</p>
+              )}
+              {activeLoading && (
+                <div className="space-y-2 px-3 py-3">
+                  <div className="h-12 animate-pulse rounded-lg bg-gray-100" />
+                  <div className="h-12 animate-pulse rounded-lg bg-gray-100" />
+                </div>
+              )}
+              {activeData && !activeLoading && <MiniPathTimeline data={activeData} />}
+            </div>
+          )}
+        </>
+      ) : (
+        <p className="text-xs text-gray-500">No members flagged for this skill.</p>
+      )}
+    </div>
+  );
+}
 
 // ─── Progress Bar Component ───────────────────────────────────────────────────
 function ProgressBar({ step }) {
@@ -48,6 +482,9 @@ export default function TeamWorkflow() {
   const [projectDescription, setProjectDescription] = useState(() => sessionStorage.getItem("tw_desc") || "");
   const [results, setResults] = useState(() => JSON.parse(sessionStorage.getItem("tw_results")) || null);
   const [currentSkillInput, setCurrentSkillInput] = useState({});
+  const [miniPaths, setMiniPaths] = useState({});
+  const [miniPathLoading, setMiniPathLoading] = useState(null);
+  const [miniPathErrors, setMiniPathErrors] = useState({});
 
   // Sync state to sessionStorage
   useEffect(() => {
@@ -136,6 +573,41 @@ export default function TeamWorkflow() {
       setError("Failed to generate and assign tasks. Please try again.");
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const generateMiniPath = async (memberName, missingSkill, taskOverride = null) => {
+    const key = miniPathKey(memberName, missingSkill);
+    setMiniPathLoading(key);
+    setMiniPathErrors((prev) => ({ ...prev, [key]: null }));
+
+    const member = team.find((m) => m.name.trim() === memberName);
+    const payload = taskOverride
+      ? {
+          task_title: taskOverride.Task_Name,
+          task_description: taskOverride.Description,
+          member_skills: member?.skills ?? [],
+          missing_skill: missingSkill,
+        }
+      : findTaskContextForGap(
+          memberName,
+          missingSkill,
+          team,
+          results,
+          projectDescription
+        );
+
+    try {
+      const response = await axios.post(`${MINI_PATH_API_URL}/api/ai/mini-path`, payload);
+      setMiniPaths((prev) => ({ ...prev, [key]: response.data }));
+    } catch (err) {
+      const message =
+        err.response?.data?.detail?.[0]?.msg ||
+        err.response?.data?.message ||
+        "Failed to generate mini path.";
+      setMiniPathErrors((prev) => ({ ...prev, [key]: message }));
+    } finally {
+      setMiniPathLoading(null);
     }
   };
 
@@ -322,6 +794,8 @@ export default function TeamWorkflow() {
   const renderResults = () => {
     if (!results) return null;
 
+    const learningGaps = computeLearningGaps(team, results);
+
     // Group tasks by assigned member
     const groupedTasks = {};
     results.assigned_tasks.forEach((item) => {
@@ -330,6 +804,10 @@ export default function TeamWorkflow() {
       }
       groupedTasks[item.assigned_to].push(item);
     });
+
+    const membersWithGaps = team.filter(
+      (member) => (learningGaps[member.name.trim()] ?? []).length > 0
+    );
 
     return (
       <div className="max-w-7xl mx-auto w-full animate-[slideQ_0.5s_ease_both]">
@@ -343,12 +821,71 @@ export default function TeamWorkflow() {
               Generated {results.total_tasks} Tasks
             </h2>
             <p className="text-sm text-gray-500 max-w-lg mx-auto">
-              Here is the AI-generated task distribution based on your team's skill profile.
+              Tasks were generated and assigned using your team&apos;s skills profile.
             </p>
           </div>
 
+          {membersWithGaps.length > 0 && (
+            <div className="relative overflow-hidden rounded-[2rem] border border-amber-200/80 bg-gradient-to-br from-amber-50 via-white to-[#1387AE]/5 p-6 md:p-8 shadow-[0_12px_40px_rgba(245,158,11,0.08)]">
+              <div className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-[#7E1487]/5 blur-3xl" />
+              <div className="pointer-events-none absolute -bottom-12 -left-12 h-40 w-40 rounded-full bg-[#1387AE]/10 blur-3xl" />
+
+              <div className="relative mb-6 flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <h3 className="font-bold text-xl text-gray-900 flex items-center gap-2.5">
+                    <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 text-white shadow-lg shadow-amber-200/50">
+                      <BookOpen size={18} />
+                    </span>
+                    Skill gaps & mini paths
+                  </h3>
+                  <p className="mt-2 max-w-2xl text-sm text-gray-600">
+                    Generate a personalized learning roadmap for each missing skill. Expand or collapse paths with the toggle.
+                  </p>
+                </div>
+                <span className="rounded-full border border-amber-200 bg-white/80 px-4 py-1.5 text-xs font-bold text-amber-800 shadow-sm">
+                  {membersWithGaps.length} member{membersWithGaps.length !== 1 ? "s" : ""} need upskilling
+                </span>
+              </div>
+
+              <div className="relative grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {membersWithGaps.map((member) => {
+                  const gaps = learningGaps[member.name.trim()] ?? [];
+                  const memberName = member.name.trim();
+                  return (
+                    <div
+                      key={member.id}
+                      className="rounded-2xl border border-white/80 bg-white/90 p-5 shadow-sm backdrop-blur-sm ring-1 ring-amber-100/60"
+                    >
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white font-bold text-sm">
+                          {member.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                          <p className="font-bold text-gray-900">{member.name}</p>
+                          <p className="text-xs text-amber-700">
+                            Needs to learn {gaps.length} skill{gaps.length !== 1 ? "s" : ""}
+                          </p>
+                        </div>
+                      </div>
+                      <GapSkillsGroup
+                        memberName={memberName}
+                        skills={gaps}
+                        miniPaths={miniPaths}
+                        miniPathLoading={miniPathLoading}
+                        miniPathErrors={miniPathErrors}
+                        onGenerate={generateMiniPath}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-8 mt-6">
-            {Object.keys(groupedTasks).map((memberName) => (
+            {Object.keys(groupedTasks).map((memberName) => {
+              const gaps = learningGaps[memberName] ?? [];
+              return (
               <div key={memberName} className="col-span-1 border border-gray-100 bg-gray-50/70 rounded-3xl p-6 md:p-7 shadow-sm ">
                 <div className="flex items-center gap-4 mb-6 border-b border-gray-200 pb-4">
                   <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#7E1487] to-[#1387AE] flex items-center justify-center text-white font-bold text-sm shadow-sm">
@@ -359,9 +896,31 @@ export default function TeamWorkflow() {
                     {groupedTasks[memberName].length} tasks
                   </span>
                 </div>
+
+                {gaps.length > 0 && (
+                  <div className="mb-5 rounded-2xl border border-amber-200/70 bg-gradient-to-br from-amber-50/80 to-white p-4">
+                    <p className="mb-3 text-xs font-bold uppercase tracking-wider text-amber-800">
+                      Upskill paths
+                    </p>
+                    <GapSkillsGroup
+                      memberName={memberName}
+                      skills={gaps}
+                      miniPaths={miniPaths}
+                      miniPathLoading={miniPathLoading}
+                      miniPathErrors={miniPathErrors}
+                      onGenerate={generateMiniPath}
+                    />
+                  </div>
+                )}
                 
                 <div className="space-y-6">
-                  {groupedTasks[memberName].map((assigned, idx) => (
+                  {groupedTasks[memberName].map((assigned, idx) => {
+                    const member = team.find((m) => m.name.trim() === memberName);
+                    const missingForTask = (assigned.task.Required_Skills ?? []).filter(
+                      (s) => !memberHasSkill(member?.skills, s)
+                    );
+
+                    return (
                     <div key={idx} className="bg-white p-5 md:p-6 rounded-2xl border border-gray-100 shadow-sm relative overflow-hidden transition-all hover:shadow-md">
                       <div className="absolute top-0 left-0 w-1.5 h-full bg-[#7E1487]" />
                       <h4 className="font-bold text-[15px] text-gray-800 mb-2.5 leading-snug">{assigned.task.Task_Name}</h4>
@@ -375,6 +934,21 @@ export default function TeamWorkflow() {
                         ))}
                       </div>
 
+                      {missingForTask.length > 0 && (
+                        <div className="mb-4">
+                          <GapSkillsGroup
+                            memberName={memberName}
+                            skills={missingForTask}
+                            miniPaths={miniPaths}
+                            miniPathLoading={miniPathLoading}
+                            miniPathErrors={miniPathErrors}
+                            onGenerate={(name, s) =>
+                              generateMiniPath(name, s, assigned.task)
+                            }
+                          />
+                        </div>
+                      )}
+
                       <div className="bg-[#1387AE]/5 rounded-xl p-3.5 border border-[#1387AE]/10">
                         <p className="text-xs text-[#1387AE] font-semibold">
                           <span className="font-bold">Match Score:</span> {Math.round(assigned.match_score * 100)}%
@@ -384,31 +958,49 @@ export default function TeamWorkflow() {
                         </p>
                       </div>
                     </div>
-                  ))}
+                  );
+                  })}
                 </div>
               </div>
-            ))}
+            );
+            })}
           </div>
 
           {results.unassigned_tasks && results.unassigned_tasks.length > 0 && (
             <div className="mt-8 border border-orange-200 bg-orange-50 rounded-3xl p-6 md:p-8 shadow-sm">
               <h3 className="font-bold text-lg text-orange-800 flex items-center gap-2 mb-3">
-                ⚠️ Unassigned Tasks ({results.unassigned_tasks.length})
+                <AlertTriangle size={18} />
+                Unassigned Tasks ({results.unassigned_tasks.length})
               </h3>
               <p className="text-sm text-orange-700 mb-6 font-medium">
-                These tasks could not be perfectly matched to your team's current skills.
+                No team member had the required skills for these tasks. Consider upskilling in the skills listed below.
               </p>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {results.unassigned_tasks.map((task, idx) => (
                   <div key={idx} className="bg-white p-5 md:p-6 rounded-2xl border border-orange-100 shadow-sm transition-all hover:shadow-md">
                     <h4 className="font-bold text-[15px] text-gray-800 mb-2.5 leading-snug">{task.Task_Name}</h4>
                     <p className="text-sm text-gray-600 mb-4 leading-relaxed">{task.Description}</p>
-                    <div className="flex flex-wrap gap-2">
-                      {task.Required_Skills?.map(s => (
-                        <span key={s} className="text-[11px] font-semibold bg-gray-100 text-gray-600 px-2 py-1 rounded-md border border-gray-200/60">
-                          {s}
-                        </span>
-                      ))}
+                    <p className="text-[11px] font-bold uppercase tracking-wide text-orange-700 mb-2">
+                      Required skills — generate path per member
+                    </p>
+                    <div className="space-y-3">
+                      {(task.Required_Skills ?? []).map((skill) => {
+                        const needers = team.filter(
+                          (m) => m.name.trim() && !memberHasSkill(m.skills, skill)
+                        );
+                        return (
+                          <UnassignedSkillRow
+                            key={skill}
+                            skill={skill}
+                            needers={needers}
+                            task={task}
+                            miniPaths={miniPaths}
+                            miniPathLoading={miniPathLoading}
+                            miniPathErrors={miniPathErrors}
+                            onGenerate={generateMiniPath}
+                          />
+                        );
+                      })}
                     </div>
                   </div>
                 ))}

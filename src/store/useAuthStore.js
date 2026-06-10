@@ -162,6 +162,55 @@ const useAuthStore = create(
         }
       },
 
+      addUserSkill: async (skill) => {
+        const name = typeof skill === "string" ? skill.trim() : "";
+        if (!name) return { success: false, error: "Invalid skill" };
+
+        const { token } = get();
+        if (!token) return { success: false, error: "Not logged in" };
+
+        try {
+          const data = await api.post("user/skills", { skill: name });
+          if (data.user) {
+            set((state) => ({
+              user: state.user
+                ? { ...state.user, ...data.user, skills: data.skills ?? data.user.skills }
+                : data.user,
+            }));
+          }
+          return { success: true, data };
+        } catch (err) {
+          return { success: false, error: err.message };
+        }
+      },
+
+      syncWeekSkills: async (skillNames) => {
+        const { token, addUserSkill } = get();
+        if (!token || !skillNames?.length) return;
+
+        for (const skill of skillNames) {
+          await addUserSkill(skill);
+        }
+      },
+
+      finishTrack: async () => {
+        const { token, user } = get();
+        if (!token) return { success: false, error: "Not logged in" };
+        if (user?.trackFinished) return { success: true, data: { user } };
+
+        try {
+          const data = await api.post("user/finish-track");
+          if (data.user) {
+            set((state) => ({
+              user: state.user ? { ...state.user, ...data.user } : data.user,
+            }));
+          }
+          return { success: true, data };
+        } catch (err) {
+          return { success: false, error: err.message };
+        }
+      },
+
       clearError: () => set({ error: null }),
     }),
     {
