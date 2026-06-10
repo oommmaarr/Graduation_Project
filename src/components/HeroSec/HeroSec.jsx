@@ -35,40 +35,57 @@ const HeroSec = () => {
       delay: 1,
     });
 
-    gsap
-      .timeline({
-        scrollTrigger: {
-          trigger: "#hero",
-          start: "top top",
-          end: "bottom top",
-          scrub: true,
-        },
-      })
-      .to(".right-leaf", { y: 200 }, 0)
-      .to(".left-leaf", { y: -200 }, 0)
-      .to(".arrow", { y: 100 }, 0);
-
-    const startValue = isMobile ? "top 50%" : "center 60%";
-    const endValue = isMobile ? "170% top" : "bottom top";
+    if (!isMobile) {
+      gsap
+        .timeline({
+          scrollTrigger: {
+            trigger: "#hero",
+            start: "top top",
+            end: "bottom top",
+            scrub: true,
+          },
+        })
+        .to(".right-leaf", { y: 200 }, 0)
+        .to(".left-leaf", { y: -200 }, 0)
+        .to(".arrow", { y: 100 }, 0);
+    }
 
     if (!videoRef.current) return;
 
+    const video = videoRef.current;
+
+    if (isMobile) {
+      const lockFrame = () => {
+        if (video.duration) {
+          video.currentTime = Math.min(video.duration - 0.04, video.duration * 0.78);
+        }
+        video.pause();
+      };
+
+      if (video.readyState >= 1) {
+        lockFrame();
+      } else {
+        video.addEventListener("loadedmetadata", lockFrame, { once: true });
+      }
+      return;
+    }
+
     const tl = gsap.timeline({
       scrollTrigger: {
-        trigger: videoRef.current,
-        start: startValue,
-        end: endValue,
+        trigger: video,
+        start: "center 60%",
+        end: "bottom top",
         scrub: true,
         pin: true,
       },
     });
 
-    videoRef.current.onloadedmetadata = () => {
-      tl.to(videoRef.current, {
-        currentTime: videoRef.current.duration,
+    video.onloadedmetadata = () => {
+      tl.to(video, {
+        currentTime: video.duration,
       });
     };
-  }, []);
+  }, { dependencies: [isMobile] });
 
   return (
     <section id="hero">
