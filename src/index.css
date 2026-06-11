@@ -139,6 +139,57 @@ body {
     margin: 0 !important;
   }
 
+  .home-page {
+    @apply relative w-full;
+  }
+
+  .syntra-intro-section {
+    @apply relative z-20 w-full;
+    margin-top: -10vh;
+  }
+
+  .syntra-intro-hero {
+    @apply relative w-full overflow-hidden bg-[#070b12];
+    height: calc(100dvh + 10vh);
+    min-height: calc(100dvh + 10vh);
+  }
+
+  .syntra-intro-backdrop {
+    @apply absolute inset-0 z-0 bg-[#070b12];
+  }
+
+  .syntra-intro-reveal {
+    @apply absolute inset-0 z-[1] size-full will-change-transform;
+  }
+
+  .syntra-intro-reveal-img {
+    @apply size-full object-cover;
+  }
+
+  .syntra-visible-logo {
+    @apply pointer-events-none absolute inset-0 z-10 flex items-center justify-center whitespace-nowrap font-serif text-[clamp(3.5rem,12vw,6.5rem)] font-bold leading-none text-white will-change-transform;
+    letter-spacing: -0.02em;
+  }
+
+  .syntra-visible-logo .syntra-dot-ai {
+    @apply font-sans font-semibold text-[#7E1487];
+  }
+
+  .intro-handoff-trigger {
+    @apply relative z-30;
+    margin-top: -110vh;
+  }
+
+  @media (min-width: 768px) {
+    .intro-handoff-trigger {
+      margin-top: -130vh;
+    }
+  }
+
+  .main-site-wrapper {
+    @apply relative z-40;
+  }
+
   #cocktails {
     @apply relative min-h-dvh w-full overflow-hidden;
 

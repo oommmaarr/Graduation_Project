@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 120" fill="none">
+  <text
+    x="320"
+    y="78"
+    text-anchor="middle"
+    font-family="Georgia, 'Times New Roman', serif"
+    font-size="88"
+    font-weight="700"
+    fill="#ffffff"
+  >syntra</text>
+  <text
+    x="320"
+    y="78"
+    text-anchor="middle"
+    font-family="Arial, Helvetica, sans-serif"
+    font-size="88"
+    font-weight="600"
+    fill="#ffffff"
+  >
+    <tspan dx="108">.ai</tspan>
+  </text>
+</svg>
