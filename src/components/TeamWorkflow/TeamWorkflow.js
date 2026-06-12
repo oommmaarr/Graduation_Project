@@ -15,8 +15,10 @@ import {
   Clock,
   Route,
   AlertTriangle,
+  GraduationCap,
 } from "lucide-react";
 import axios from "axios";
+import { api } from "@/store/useAuthStore";
 
 const PREDEFINED_SKILLS = [
   "React", "Node.js", "Python", "AWS", "HTML", 
@@ -43,6 +45,27 @@ const MINI_PATH_API_URL =
 
 function normalizeSkill(skill) {
   return String(skill).trim().toLowerCase();
+}
+
+function createMember(overrides = {}) {
+  return {
+    id: Date.now() + Math.floor(Math.random() * 1000),
+    name: "",
+    skills: [],
+    mode: "manual",
+    learnerId: null,
+    ...overrides,
+  };
+}
+
+function normalizeMember(member) {
+  return {
+    id: member.id,
+    name: member.name ?? "",
+    skills: Array.isArray(member.skills) ? member.skills : [],
+    mode: member.mode === "learner" ? "learner" : "manual",
+    learnerId: member.learnerId ?? null,
+  };
 }
 
 function memberHasSkill(memberSkills, skill) {
@@ -478,13 +501,48 @@ export default function TeamWorkflow() {
 
   // Persistent State (Survives Vite HMR)
   const [phase, setPhase] = useState(() => sessionStorage.getItem("tw_phase") || "setup_team");
-  const [team, setTeam] = useState(() => JSON.parse(sessionStorage.getItem("tw_team")) || [{ id: Date.now(), name: "", skills: [] }]);
+  const [team, setTeam] = useState(() => {
+    const saved = sessionStorage.getItem("tw_team");
+    const parsed = saved ? JSON.parse(saved) : [createMember()];
+    return parsed.map(normalizeMember);
+  });
   const [projectDescription, setProjectDescription] = useState(() => sessionStorage.getItem("tw_desc") || "");
   const [results, setResults] = useState(() => JSON.parse(sessionStorage.getItem("tw_results")) || null);
   const [currentSkillInput, setCurrentSkillInput] = useState({});
   const [miniPaths, setMiniPaths] = useState({});
   const [miniPathLoading, setMiniPathLoading] = useState(null);
   const [miniPathErrors, setMiniPathErrors] = useState({});
+  const [finishedLearners, setFinishedLearners] = useState([]);
+  const [finishedLearnersLoading, setFinishedLearnersLoading] = useState(false);
+  const [finishedLearnersError, setFinishedLearnersError] = useState(null);
+
+  useEffect(() => {
+    if (phase !== "setup_team") return undefined;
+
+    let cancelled = false;
+
+    async function loadFinishedLearners() {
+      setFinishedLearnersLoading(true);
+      setFinishedLearnersError(null);
+      try {
+        const data = await api.get("user/finished-tracks");
+        if (!cancelled) {
+          setFinishedLearners(Array.isArray(data?.users) ? data.users : []);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setFinishedLearnersError(err.message || "Could not load completed learners.");
+        }
+      } finally {
+        if (!cancelled) setFinishedLearnersLoading(false);
+      }
+    }
+
+    loadFinishedLearners();
+    return () => {
+      cancelled = true;
+    };
+  }, [phase]);
 
   // Sync state to sessionStorage
   useEffect(() => {
@@ -496,7 +554,7 @@ export default function TeamWorkflow() {
 
   // ─── Phase 1 Handlers ───────────────────────────────────────────────────────
   const addMember = () => {
-    setTeam([...team, { id: Date.now(), name: "", skills: [] }]);
+    setTeam([...team, createMember()]);
   };
 
   const removeMember = (id) => {
@@ -506,6 +564,53 @@ export default function TeamWorkflow() {
 
   const updateMemberName = (id, name) => {
     setTeam(team.map((m) => (m.id === id ? { ...m, name } : m)));
+  };
+
+  const updateMemberMode = (id, mode) => {
+    setTeam(
+      team.map((m) => {
+        if (m.id !== id) return m;
+        if (mode === "manual") {
+          return { ...m, mode: "manual", learnerId: null };
+        }
+        return { ...m, mode: "learner", name: "", skills: [], learnerId: null };
+      })
+    );
+  };
+
+  const selectLearnerForMember = (memberId, learnerId) => {
+    if (!learnerId) {
+      setTeam(
+        team.map((m) =>
+          m.id === memberId ? { ...m, learnerId: null, name: "", skills: [] } : m
+        )
+      );
+      return;
+    }
+
+    const learner = finishedLearners.find((u) => u.id === learnerId);
+    if (!learner) return;
+
+    setTeam(
+      team.map((m) =>
+        m.id === memberId
+          ? {
+              ...m,
+              mode: "learner",
+              learnerId: learner.id,
+              name: learner.name ?? "",
+              skills: [...(learner.skills ?? [])],
+            }
+          : m
+      )
+    );
+  };
+
+  const getAvailableLearners = (memberId) => {
+    const usedIds = new Set(
+      team.filter((m) => m.id !== memberId && m.learnerId).map((m) => m.learnerId)
+    );
+    return finishedLearners.filter((u) => !usedIds.has(u.id));
   };
 
   const addSkill = (memberId, skill) => {
@@ -530,8 +635,17 @@ export default function TeamWorkflow() {
 
   const submitTeam = async () => {
     // Validation
-    if (team.some(m => !m.name.trim() || m.skills.length === 0)) {
-      setError("Please ensure all members have a name and at least one skill.");
+    if (
+      team.some(
+        (m) =>
+          !m.name.trim() ||
+          m.skills.length === 0 ||
+          (m.mode === "learner" && !m.learnerId)
+      )
+    ) {
+      setError(
+        "Each member needs a name, at least one skill, and a selected learner when using completed track."
+      );
       return;
     }
 
@@ -621,9 +735,23 @@ export default function TeamWorkflow() {
           </div>
           <h2 className="text-xl font-bold text-gray-900">Define Your Team</h2>
         </div>
-        <p className="text-sm text-gray-500 mb-6">
-          Add your team members and list their skills or domains of expertise.
+        <p className="text-sm text-gray-500 mb-4">
+          Add members manually with custom names and skills, or pick learners who
+          finished their track — their skills will load automatically.
         </p>
+
+        {finishedLearnersLoading && (
+          <p className="mb-4 flex items-center gap-2 text-xs text-gray-500">
+            <Loader2 size={14} className="animate-spin" />
+            Loading completed learners…
+          </p>
+        )}
+
+        {finishedLearnersError && (
+          <p className="mb-4 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            {finishedLearnersError} You can still add members manually.
+          </p>
+        )}
 
         {error && (
           <p className="text-xs text-red-500 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-4">
@@ -646,22 +774,75 @@ export default function TeamWorkflow() {
                 </button>
               )}
               
+              <div className="mb-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => updateMemberMode(member.id, "manual")}
+                  className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                    member.mode !== "learner"
+                      ? "bg-[#7E1487]/10 text-[#7E1487] ring-1 ring-[#7E1487]/30"
+                      : "bg-white text-gray-500 ring-1 ring-gray-200 hover:text-gray-700"
+                  }`}
+                >
+                  <User size={13} />
+                  Custom name
+                </button>
+                <button
+                  type="button"
+                  onClick={() => updateMemberMode(member.id, "learner")}
+                  disabled={finishedLearners.length === 0 && !finishedLearnersLoading}
+                  className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                    member.mode === "learner"
+                      ? "bg-[#1387AE]/10 text-[#1387AE] ring-1 ring-[#1387AE]/30"
+                      : "bg-white text-gray-500 ring-1 ring-gray-200 hover:text-gray-700"
+                  }`}
+                >
+                  <GraduationCap size={13} />
+                  From completed track
+                </button>
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
                 <div>
                   <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
                     Member Name
                   </label>
-                  <input
-                    type="text"
-                    value={member.name}
-                    onChange={(e) => updateMemberName(member.id, e.target.value)}
-                    placeholder="e.g. Ahmed Ali"
-                    className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm focus:border-[#7E1487] focus:ring-1 focus:ring-[#7E1487]/20 outline-none transition-all"
-                  />
+                  {member.mode === "learner" ? (
+                    <select
+                      value={member.learnerId ?? ""}
+                      onChange={(e) => selectLearnerForMember(member.id, e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm focus:border-[#1387AE] focus:ring-1 focus:ring-[#1387AE]/20 outline-none transition-all"
+                    >
+                      <option value="">Select a learner…</option>
+                      {getAvailableLearners(member.id).map((learner) => (
+                        <option key={learner.id} value={learner.id}>
+                          {learner.name} — {learner.skills?.length ?? 0} skills
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      type="text"
+                      value={member.name}
+                      onChange={(e) => updateMemberName(member.id, e.target.value)}
+                      placeholder="e.g. Ahmed Ali"
+                      className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm focus:border-[#7E1487] focus:ring-1 focus:ring-[#7E1487]/20 outline-none transition-all"
+                    />
+                  )}
+                  {member.mode === "learner" && member.learnerId && (
+                    <p className="mt-1.5 text-[11px] text-gray-500">
+                      Selected: <span className="font-semibold text-gray-700">{member.name}</span>
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
                     Specific Skills / Tools
+                    {member.mode === "learner" && member.skills.length > 0 && (
+                      <span className="ml-1 normal-case font-normal text-[#1387AE]">
+                        (auto-filled)
+                      </span>
+                    )}
                   </label>
                   <div className="flex gap-2">
                     <input
