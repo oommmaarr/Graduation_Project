@@ -1,6 +1,7 @@
 'use client';
 import { motion, useInView } from 'framer-motion';
 import { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import useAuthStore from '@/store/useAuthStore';
 import {
   GraduationCap,
@@ -285,14 +286,14 @@ export default function RolesPage() {
           </div>
 
           {/* CTA */}
-          <motion.a
-            href="#"
-            whileHover={{ scale: 1.03 }}
-            whileTap={{ scale: 0.97 }}
-            className="mt-5 inline-flex items-center gap-2 bg-gradient-to-r from-[#1387AE] to-[#DC9DEE] text-white cursor-pointer px-6 py-2.5 2xl:px-12 2xl:py-3 rounded-full font-semibold text-sm 2xl:text-lg hover:opacity-90 transition-all shadow-lg shadow-blue-500/20"
-          >
-            Get Started as {current.title} <ArrowRight size={15} />
-          </motion.a>
+          <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
+            <Link
+              to="/tech"
+              className="mt-5 inline-flex items-center gap-2 bg-gradient-to-r from-[#1387AE] to-[#DC9DEE] text-white cursor-pointer px-6 py-2.5 2xl:px-12 2xl:py-3 rounded-full font-semibold text-sm 2xl:text-lg hover:opacity-90 transition-all shadow-lg shadow-blue-500/20"
+            >
+              Get Started as {current.title} <ArrowRight size={15} />
+            </Link>
+          </motion.div>
         </motion.div>
 
       </div>
