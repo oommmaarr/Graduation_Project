@@ -27,6 +27,7 @@ import useInterviewStore, {
 } from "@/store/useInterviewStore";
 import WeekQuizPanel from "@/components/Roadmap/WeekQuizPanel";
 import ProjectSuggestionsPanel from "@/components/Roadmap/ProjectSuggestionsPanel";
+import InterviewInviteBanner from "@/components/MockInterview/InterviewInviteBanner";
 
 const SKILL_COLORS = [
   "#1387AE",
@@ -1029,6 +1030,7 @@ export default function RoadmapView() {
 
   return (
     <div className="roadmap-view min-h-[calc(100vh-10vh)] w-full py-6">
+      <InterviewInviteBanner className="mb-4" />
       <WeekQuizPanel />
       <style>{`
         @keyframes rmSpin { to { transform: rotate(360deg); } }

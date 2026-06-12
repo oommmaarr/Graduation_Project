@@ -47,6 +47,45 @@ function InfoRow({ label, value, icon: Icon }) {
   );
 }
 
+function FinishedTracksSection({ tracks }) {
+  if (!tracks?.length) return null;
+
+  return (
+    <div className="mt-8 rounded-2xl border border-emerald-200/80 bg-gradient-to-br from-emerald-50/80 to-white px-5 py-5 sm:px-6">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700">
+            <CheckCircle2 size={18} />
+          </div>
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+              Completed tracks
+            </p>
+            <p className="mt-0.5 text-sm font-semibold text-gray-900">
+              Verified on Syntra.AI
+            </p>
+          </div>
+        </div>
+        <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-800">
+          {tracks.length} track{tracks.length !== 1 ? "s" : ""}
+        </span>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {tracks.map((track) => (
+          <span
+            key={track}
+            className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-white px-3.5 py-1.5 text-sm font-semibold text-emerald-900 shadow-sm"
+          >
+            <Map size={13} className="shrink-0 text-emerald-600" />
+            {track}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function LearnedSkillsSection({ trackName, skills }) {
   return (
     <div className="mt-8 rounded-2xl border border-gray-200 bg-white px-5 py-5 sm:px-6">
@@ -421,7 +460,10 @@ export default function ProfilePage() {
                   </div>
 
                   {isLearner && (
-                    <LearnedSkillsSection trackName={trackName} skills={displaySkills} />
+                    <>
+                      <FinishedTracksSection tracks={user?.finishedTracks} />
+                      <LearnedSkillsSection trackName={trackName} skills={displaySkills} />
+                    </>
                   )}
 
                   <div className="mt-8 flex justify-center lg:hidden">

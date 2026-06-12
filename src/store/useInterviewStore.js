@@ -52,10 +52,18 @@ export function syncTrackFinishedIfComplete(roadmap, passedWeeks) {
 
   syncPassedSkillsToProfile(roadmap, passedWeeks);
 
-  const { token, user, finishTrack } = useAuthStore.getState();
-  if (!token || user?.trackFinished) return;
+  const trackName = roadmap?.track_name?.trim();
+  if (!trackName) return;
 
-  finishTrack();
+  const { token, user, finishTrack } = useAuthStore.getState();
+  if (!token) return;
+
+  const alreadyFinished = (user?.finishedTracks ?? []).some(
+    (t) => String(t).trim().toLowerCase() === trackName.toLowerCase()
+  );
+  if (alreadyFinished) return;
+
+  finishTrack(trackName);
 }
 
 export function extractRoadmapCourses(roadmap) {
@@ -156,6 +164,7 @@ const useInterviewStore = create(
   persist(
     (set, get) => ({
       phase: "welcome",
+      ownerUserId: null,
       sessionId: null,
       question: null,
       options: {},
@@ -207,6 +216,41 @@ const useInterviewStore = create(
       closeWelcome: () => set({ phase: "closed" }),
       openWelcome: () => set({ phase: "welcome", error: null }),
       selectAnswer: (letter) => set({ selectedAnswer: letter }),
+
+      repairBrokenInterview: () => {
+        const { phase, sessionId, question, recommendation } = get();
+        if (phase !== "interview") return;
+        if (sessionId && question) return;
+
+        set({
+          phase: recommendation?.track_name ? "done" : "welcome",
+          sessionId: null,
+          question: null,
+          options: {},
+          questionNumber: 0,
+          selectedAnswer: null,
+          isLoading: false,
+          error: null,
+        });
+      },
+
+      syncForUser: (user) => {
+        const userId = String(user?.id ?? user?._id ?? "").trim();
+        if (!userId) return;
+
+        const { ownerUserId } = get();
+        if (ownerUserId && ownerUserId !== userId) {
+          get().reset();
+          set({ ownerUserId: userId });
+          return;
+        }
+
+        if (!ownerUserId) {
+          set({ ownerUserId: userId });
+        }
+
+        get().repairBrokenInterview();
+      },
 
       setTrackDirectly: (trackName) =>
         set({
@@ -651,8 +695,10 @@ const useInterviewStore = create(
 
       reset: () => {
         get().syncProgressCache();
+        const userId = useAuthStore.getState().user?.id ?? useAuthStore.getState().user?._id;
         set({
           phase: "welcome",
+          ownerUserId: userId ? String(userId) : null,
           sessionId: null,
           question: null,
           options: {},
@@ -876,20 +922,34 @@ const useInterviewStore = create(
     }),
     {
       name: "syntra-week-progress",
-      partialize: (state) => ({
-        phase: state.phase,
-        recommendation: state.recommendation,
-        hoursPerWeek: state.hoursPerWeek,
-        roadmap: state.roadmap,
-        activeRoadmapKey: state.activeRoadmapKey,
-        savedRoadmaps: state.savedRoadmaps,
-        progressByRoadmapKey: state.progressByRoadmapKey,
-        savedProjectsByKey: state.savedProjectsByKey,
-        unlockedWeekIndex: state.unlockedWeekIndex,
-        passedWeeks: state.passedWeeks,
-        progressTrackName: state.progressTrackName,
-        courseWeights: state.courseWeights,
-      }),
+      onRehydrateStorage: () => (state) => {
+        if (!state) return;
+        if (state.phase === "interview") {
+          state.phase = state.recommendation?.track_name ? "done" : "welcome";
+        }
+      },
+      partialize: (state) => {
+        let phase = state.phase;
+        if (phase === "interview") {
+          phase = state.recommendation?.track_name ? "done" : "closed";
+        }
+
+        return {
+          ownerUserId: state.ownerUserId,
+          phase,
+          recommendation: state.recommendation,
+          hoursPerWeek: state.hoursPerWeek,
+          roadmap: state.roadmap,
+          activeRoadmapKey: state.activeRoadmapKey,
+          savedRoadmaps: state.savedRoadmaps,
+          progressByRoadmapKey: state.progressByRoadmapKey,
+          savedProjectsByKey: state.savedProjectsByKey,
+          unlockedWeekIndex: state.unlockedWeekIndex,
+          passedWeeks: state.passedWeeks,
+          progressTrackName: state.progressTrackName,
+          courseWeights: state.courseWeights,
+        };
+      },
     }
   )
 );

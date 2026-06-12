@@ -193,13 +193,21 @@ const useAuthStore = create(
         }
       },
 
-      finishTrack: async () => {
+      finishTrack: async (trackName) => {
+        const name = typeof trackName === "string" ? trackName.trim() : "";
         const { token, user } = get();
         if (!token) return { success: false, error: "Not logged in" };
-        if (user?.trackFinished) return { success: true, data: { user } };
+        if (!name) return { success: false, error: "Track name is required" };
+
+        const alreadyFinished = (user?.finishedTracks ?? []).some(
+          (t) => String(t).trim().toLowerCase() === name.toLowerCase()
+        );
+        if (alreadyFinished) {
+          return { success: true, data: { user } };
+        }
 
         try {
-          const data = await api.post("user/finish-track");
+          const data = await api.post("user/finish-track", { track: name });
           if (data.user) {
             set((state) => ({
               user: state.user ? { ...state.user, ...data.user } : data.user,

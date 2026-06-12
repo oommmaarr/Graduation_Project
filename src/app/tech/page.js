@@ -1,5 +1,6 @@
 import TechQuestions from "@/components/TechQuestions/TechQuestions";
 import TeamWorkflow from "@/components/TeamWorkflow/TeamWorkflow";
+import RecruiterHub from "@/components/RecruiterHub/RecruiterHub";
 import useAuthStore from "@/store/useAuthStore";
 import { Navigate } from "react-router-dom";
 
@@ -14,6 +15,14 @@ export default function Tech() {
     return (
       <div className="tq-page">
         <TeamWorkflow />
+      </div>
+    );
+  }
+
+  if (user.role === "recruiter") {
+    return (
+      <div className="tq-page">
+        <RecruiterHub />
       </div>
     );
   }

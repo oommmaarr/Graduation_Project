@@ -1,6 +1,7 @@
 'use client';
 import { motion, useInView } from 'framer-motion';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import useAuthStore from '@/store/useAuthStore';
 import {
   GraduationCap,
   Users,
@@ -89,6 +90,11 @@ const roles = [
   },
 ];
 
+function getRoleIndex(role) {
+  const index = roles.findIndex((r) => r.id === role);
+  return index >= 0 ? index : 0;
+}
+
 function RoleCard({ role, isActive, onClick, index }) {
   const Icon = role.icon;
   return (
@@ -146,9 +152,17 @@ function FeatureChip({ icon: Icon, label, color, delay }) {
 }
 
 export default function RolesPage() {
-  const [activeRole, setActiveRole] = useState(0);
+  const userRole = useAuthStore((state) => state.user?.role);
+  const [activeRole, setActiveRole] = useState(() => getRoleIndex(userRole));
   const sectionRef = useRef(null);
   const inView = useInView(sectionRef, { once: true });
+
+  useEffect(() => {
+    if (userRole) {
+      setActiveRole(getRoleIndex(userRole));
+    }
+  }, [userRole]);
+
   const current = roles[activeRole];
   const CurrentIcon = current.icon;
 

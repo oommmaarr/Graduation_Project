@@ -2,7 +2,12 @@ import React from "react";
 import Lottie from "lottie-react";
 import RobotAnimation from "@/animation/Robot.json";
 import useInterviewStore from "@/store/useInterviewStore";
+import useAuthStore from "@/store/useAuthStore";
+import useMockInterviewStore from "@/store/useMockInterviewStore";
 import RoadmapView from "@/components/Roadmap/RoadmapView";
+import InterviewInviteBanner from "@/components/MockInterview/InterviewInviteBanner";
+import InterviewModeSetup from "@/components/MockInterview/InterviewModeSetup";
+import MockInterviewPanel from "@/components/MockInterview/MockInterviewPanel";
 
 // ─── Shared keyframes (injected once) ─────────────────────────────────────────
 const Keyframes = () => (
@@ -190,8 +195,26 @@ function OptionBtn({ letter, text }) {
 
 // ─── Interview Screen ──────────────────────────────────────────────────────────
 function InterviewScreen() {
-  const { question, options, questionNumber, selectedAnswer, isLoading, error, submitAnswer } =
+  const { question, options, questionNumber, selectedAnswer, isLoading, error, submitAnswer, openWelcome } =
     useInterviewStore();
+
+  if (!question && !isLoading) {
+    return (
+      <div className="max-w-md mx-auto px-4 py-16 text-center animate-[slideQ_0.4s_ease_both]">
+        <Keyframes />
+        <p className="text-sm text-gray-600 mb-4">
+          Your assessment session was interrupted or expired. Start again to continue.
+        </p>
+        <button
+          type="button"
+          onClick={openWelcome}
+          className="px-6 py-2.5 rounded-full text-white text-sm font-semibold bg-gradient-to-r from-[#7E1487] to-[#1387AE] shadow-md hover:-translate-y-0.5 transition-all cursor-pointer"
+        >
+          Start Assessment
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-8 w-full animate-[slideQ_0.4s_ease_both]">
@@ -417,19 +440,55 @@ function ClosedState() {
 
 // ─── TechQuestions (root) ──────────────────────────────────────────────────────
 const TechQuestions = () => {
+  const user = useAuthStore((s) => s.user);
+  const hasHydrated = useAuthStore((s) => s._hasHydrated);
   const phase = useInterviewStore((s) => s.phase);
+  const syncForUser = useInterviewStore((s) => s.syncForUser);
+  const mockActive = useMockInterviewStore((s) => s.active);
+  const pendingInvite = useMockInterviewStore((s) => s.pendingInvite);
+
+  React.useEffect(() => {
+    if (!hasHydrated || !user) return;
+    syncForUser(user);
+  }, [hasHydrated, user, syncForUser]);
+
+  const modeSetupOverlay = pendingInvite ? <InterviewModeSetup /> : null;
+
+  if (mockActive) {
+    return (
+      <>
+        {modeSetupOverlay}
+        <div className="w-full min-h-[calc(100vh-10vh)] py-4">
+          <MockInterviewPanel />
+        </div>
+      </>
+    );
+  }
 
   if (phase === "roadmap") {
-    return <RoadmapView />;
+    return (
+      <>
+        {modeSetupOverlay}
+        <div className="w-full min-h-[calc(100vh-10vh)]">
+          <RoadmapView />
+        </div>
+      </>
+    );
   }
 
   return (
-    <div className="w-full min-h-[calc(100vh-10vh)] flex items-center justify-center">
-      {phase === "welcome"  && <WelcomePopup />}
-      {phase === "closed"   && <ClosedState />}
-      {phase === "interview" && <InterviewScreen />}
-      {phase === "done"     && <ResultScreen />}
+    <>
+      {modeSetupOverlay}
+      <div className="w-full min-h-[calc(100vh-10vh)] flex flex-col items-center justify-center py-6">
+      <InterviewInviteBanner />
+      <div className="flex w-full items-center justify-center">
+        {phase === "welcome" && <WelcomePopup />}
+        {phase === "closed" && <ClosedState />}
+        {phase === "interview" && <InterviewScreen />}
+        {phase === "done" && <ResultScreen />}
+      </div>
     </div>
+    </>
   );
 };
 
