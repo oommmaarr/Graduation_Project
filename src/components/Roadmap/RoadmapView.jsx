@@ -28,6 +28,7 @@ import useInterviewStore, {
 import WeekQuizPanel from "@/components/Roadmap/WeekQuizPanel";
 import ProjectSuggestionsPanel from "@/components/Roadmap/ProjectSuggestionsPanel";
 import InterviewInviteBanner from "@/components/MockInterview/InterviewInviteBanner";
+import { showTrackDevTools } from "@/lib/featureFlags";
 
 const SKILL_COLORS = [
   "#1387AE",
@@ -1258,11 +1259,11 @@ export default function RoadmapView() {
           </div>
         )}
 
-        {import.meta.env.DEV && !trackComplete && weeks.length > 0 && (
+        {showTrackDevTools && !trackComplete && weeks.length > 0 && (
           <div className="border-t border-dashed border-amber-300/60 bg-amber-50/50 px-6 py-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="text-xs text-amber-800">
-                Dev only — simulate finishing all weeks to preview project ideas.
+                Demo shortcut — simulate finishing all weeks to preview project ideas.
               </p>
               <button
                 type="button"
