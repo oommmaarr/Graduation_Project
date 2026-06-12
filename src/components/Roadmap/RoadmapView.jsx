@@ -163,23 +163,33 @@ function AuroraBackground() {
   );
 }
 
-function ResourceLink({ href, icon: Icon, label, accent, delay }) {
+function ResourceLink({ href, icon: Icon, label, accent, delay, textOnly = false }) {
   const disabled = !href;
+  const Wrapper = textOnly || disabled ? motion.div : motion.a;
+  const wrapperProps =
+    textOnly || disabled
+      ? {}
+      : {
+          href,
+          target: "_blank",
+          rel: "noopener noreferrer",
+        };
+
   return (
-    <motion.a
-      href={disabled ? undefined : href}
-      target={disabled ? undefined : "_blank"}
-      rel="noopener noreferrer"
+    <Wrapper
+      {...wrapperProps}
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay }}
       className={`group relative flex items-center gap-3 overflow-hidden rounded-2xl border px-4 py-3 transition-all
         ${disabled
           ? "cursor-default border-gray-100 bg-gray-50"
-          : "border-gray-200 bg-white hover:-translate-y-0.5 hover:border-[#1387AE]/40 hover:shadow-[0_8px_24px_rgba(19,135,174,0.12)]"
+          : textOnly
+            ? "border-gray-200 bg-white"
+            : "border-gray-200 bg-white hover:-translate-y-0.5 hover:border-[#1387AE]/40 hover:shadow-[0_8px_24px_rgba(19,135,174,0.12)]"
         }`}
     >
-      {!disabled && (
+      {!disabled && !textOnly && (
         <span
           className="absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100"
           style={{
@@ -200,19 +210,27 @@ function ResourceLink({ href, icon: Icon, label, accent, delay }) {
         <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">
           {label}
         </p>
-        <p className="truncate text-sm text-gray-700 group-hover:text-gray-900">
+        <p
+          className={
+            textOnly
+              ? "text-sm leading-snug text-gray-700 break-words"
+              : "truncate text-sm text-gray-700 group-hover:text-gray-900"
+          }
+        >
           {disabled
             ? "Not available"
-            : href.replace(/^https?:\/\/(www\.)?/, "")}
+            : textOnly
+              ? href
+              : href.replace(/^https?:\/\/(www\.)?/, "")}
         </p>
       </div>
-      {!disabled && (
+      {!disabled && !textOnly && (
         <ExternalLink
           size={15}
           className="relative shrink-0 text-gray-300 transition-transform group-hover:translate-x-0.5 group-hover:text-[#1387AE]"
         />
       )}
-    </motion.a>
+    </Wrapper>
   );
 }
 
@@ -535,7 +553,7 @@ function SkillPanel({ skill, weekNumber, totalWeeks, weekHours }) {
           Curated Resources
         </p>
         <ResourceLink href={resources?.youtube_link} icon={Youtube} label="Video Tutorial" accent="#FF4D4D" delay={0.05} />
-        <ResourceLink href={resources?.book_reference} icon={BookOpen} label="Book Reference" accent="#F59E0B" delay={0.12} />
+        <ResourceLink href={resources?.book_reference} icon={BookOpen} label="Book Reference" accent="#F59E0B" delay={0.12} textOnly />
         <ResourceLink href={resources?.article_link} icon={ExternalLink} label="Deep-dive Article" accent="#1387AE" delay={0.19} />
       </div>
     </motion.div>
